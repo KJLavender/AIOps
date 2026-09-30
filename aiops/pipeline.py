@@ -58,8 +58,10 @@ class Pipeline:
         if diagnosis is None or (
             not diagnosis.auto_fixable and diagnosis.forward_to_kb
         ):
-            fallback = self._search_kb_or_llm(issue, ctx)
-            if fallback is not None:
+            allow_llm = diagnosis is None or diagnosis.consult_llm
+            fallback = self._search_kb_or_llm(issue, ctx, allow_llm)
+            # A precise rule answer is only replaced by a fix we can apply.
+            if fallback is not None and (allow_llm or fallback.auto_fixable):
                 diagnosis = fallback
 
         if diagnosis is None:
@@ -115,7 +117,7 @@ class Pipeline:
     def _build_context(self, issue: PodIssue) -> RuleContext:
         ctx = RuleContext(kube=self.kube, config=self.config)
         # Only pull logs/events for symptoms that need them (avoids noise/cost).
-        needs_logs = issue.symptom.value in {"CrashLoopBackOff", "Failed"}
+        needs_logs = issue.symptom.value in {"CrashLoopBackOff", "Failed", "NotReady"}
         if needs_logs:
             ctx.logs = self.kube.pod_logs(issue.namespace, issue.pod, issue.container)
             ctx.previous_logs = self.kube.pod_logs(
@@ -126,14 +128,14 @@ class Pipeline:
         return ctx
 
     def _search_kb_or_llm(
-        self, issue: PodIssue, ctx: RuleContext
+        self, issue: PodIssue, ctx: RuleContext, allow_llm: bool = True
     ) -> Optional[Diagnosis]:
         query_text = f"{ctx.logs}\n{ctx.events}"
         hit = self.kb.search(issue, query_text)
         if hit is not None:
             return self._diagnosis_from_kb(issue, hit)
 
-        if not self.config.llm_enabled:
+        if not (self.config.llm_enabled and allow_llm):
             return None
 
         _, dep_obj = ctx.owner_deployment(issue)
@@ -148,7 +150,10 @@ class Pipeline:
 
     def _diagnosis_from_kb(self, issue: PodIssue, entry: KBEntry) -> Diagnosis:
         dep_name, _ = self.kube.get_owner_deployment(issue.namespace, issue.pod)
-        auto_fixable = bool(entry.patch and dep_name)
+        # Workload-specific fixes (an image, an env value) must not leak onto
+        # other Deployments: only auto-apply where the entry was verified.
+        same_target = entry.target_name is None or entry.target_name == dep_name
+        auto_fixable = bool(entry.patch and dep_name and same_target)
         return Diagnosis(
             source=DiagnosisSource.KB,
             symptom=issue.symptom,

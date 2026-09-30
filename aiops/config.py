@@ -17,6 +17,16 @@ def _env_int(name: str, default: int) -> int:
     return int(val) if val else default
 
 
+def _env_map(name: str) -> dict[str, str]:
+    """Parse "k1=v1,k2=v2" into a dict (empty / malformed pairs are skipped)."""
+    result: dict[str, str] = {}
+    for pair in (os.getenv(name) or "").split(","):
+        key, sep, value = pair.partition("=")
+        if sep and key.strip() and value.strip():
+            result[key.strip()] = value.strip()
+    return result
+
+
 def _env_float(name: str, default: float) -> float:
     val = os.getenv(name)
     return float(val) if val else default
@@ -36,6 +46,11 @@ class Config:
     default_memory_limit: str = "512Mi"
     memory_scale_factor: float = 2.0
     handle_cooldown_seconds: int = 600  # avoid re-fixing the same issue repeatedly
+    # Operator-approved values. Only images / env vars listed here are auto-fixed;
+    # anything else stays a recommendation.
+    image_fallbacks: dict[str, str] = field(default_factory=dict)  # repo -> image
+    env_defaults: dict[str, str] = field(default_factory=dict)  # VAR -> value
+    not_ready_grace_seconds: int = 120  # Running but NotReady this long = issue
 
     # --- Validation ---
     validation_timeout_seconds: int = 300  # 5 minutes, per spec
@@ -52,6 +67,7 @@ class Config:
     ollama_endpoint: str = "http://localhost:11434"
     ollama_model: str = "llama3"
     llm_timeout_seconds: int = 60
+    llm_min_confidence: float = 0.6  # drop LLM answers below this
     log_tail_lines: int = 200
 
     # --- Dashboard ---
@@ -71,6 +87,9 @@ class Config:
             default_memory_limit=os.getenv("AIOPS_DEFAULT_MEMORY", "512Mi"),
             memory_scale_factor=_env_float("AIOPS_MEMORY_SCALE", 2.0),
             handle_cooldown_seconds=_env_int("AIOPS_COOLDOWN", 600),
+            image_fallbacks=_env_map("AIOPS_IMAGE_FALLBACKS"),
+            env_defaults=_env_map("AIOPS_ENV_DEFAULTS"),
+            not_ready_grace_seconds=_env_int("AIOPS_NOT_READY_GRACE", 120),
             validation_timeout_seconds=_env_int("AIOPS_VALIDATION_TIMEOUT", 300),
             validation_poll_seconds=_env_int("AIOPS_VALIDATION_POLL", 15),
             validation_stability_seconds=_env_int("AIOPS_STABILITY", 60),
@@ -81,6 +100,7 @@ class Config:
             ollama_endpoint=os.getenv("AIOPS_OLLAMA_ENDPOINT", "http://localhost:11434"),
             ollama_model=os.getenv("AIOPS_OLLAMA_MODEL", "llama3"),
             llm_timeout_seconds=_env_int("AIOPS_LLM_TIMEOUT", 60),
+            llm_min_confidence=_env_float("AIOPS_LLM_MIN_CONFIDENCE", 0.6),
             log_tail_lines=_env_int("AIOPS_LOG_TAIL", 200),
             dashboard_host=os.getenv("AIOPS_DASHBOARD_HOST", "127.0.0.1"),
             dashboard_port=_env_int("AIOPS_DASHBOARD_PORT", 8080),

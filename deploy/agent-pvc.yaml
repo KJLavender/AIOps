@@ -1,0 +1,13 @@
+# Persistent storage for the agent's Knowledge Base, so learned fixes survive
+# pod restarts (k3s ships the local-path provisioner as the default class).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aiops-kb
+  namespace: aiops-demo
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 100Mi

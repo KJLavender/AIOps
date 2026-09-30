@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .config import Config
@@ -15,6 +16,7 @@ _WAITING_SYMPTOMS = {
     "ImagePullBackOff",
     "ErrImagePull",
     "ContainerCreating",
+    "CreateContainerConfigError",
 }
 
 
@@ -90,6 +92,21 @@ class Collector:
                     phase, restarts, pod,
                 )
 
+        # Running but never becomes Ready (e.g. failing readiness probe).
+        for cs in status.get("containerStatuses", []):
+            started = cs.get("state", {}).get("running", {}).get("startedAt")
+            if (
+                phase == "Running"
+                and started
+                and not cs.get("ready", True)
+                and _age_seconds(started) >= self.config.not_ready_grace_seconds
+            ):
+                return PodIssue(
+                    namespace, name, cs.get("name"), Symptom.NOT_READY,
+                    "container running but not Ready", phase,
+                    cs.get("restartCount", 0), pod,
+                )
+
         if phase == "Pending":
             return PodIssue(
                 namespace, name, None, Symptom.PENDING,
@@ -101,6 +118,14 @@ class Collector:
                 status.get("message", "Pod failed"), phase, 0, pod,
             )
         return None
+
+
+def _age_seconds(timestamp: str) -> float:
+    try:
+        started = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return (datetime.now(timezone.utc) - started).total_seconds()
 
 
 def _pending_message(status: dict[str, Any]) -> str:

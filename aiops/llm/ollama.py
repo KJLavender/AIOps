@@ -22,6 +22,8 @@ log = logging.getLogger("aiops.llm.ollama")
 _PROMPT = """You are a Kubernetes SRE. Diagnose the failing pod from the data
 below. Respond with ONLY a JSON object of the form:
 {{"root_cause": "...", "fix": "...", "confidence": 0.0}}
+confidence is 0.0-1.0. Base the answer only on the data below; if the data
+does not show the cause, say so and use a confidence below 0.5.
 
 Symptom: {symptom}
 Message: {message}
@@ -87,12 +89,20 @@ class OllamaAnalyzer(LLMAnalyzer):
         raw_conf = float(parsed.get("confidence", 0.0) or 0.0)
         confidence = raw_conf / 100.0 if raw_conf > 1.0 else raw_conf
 
+        fix = str(parsed.get("fix") or "").strip()
+        if not fix or confidence < self.config.llm_min_confidence:
+            log.info(
+                "discarding LLM answer for %s (confidence=%.2f < %.2f or no fix)",
+                issue.key, confidence, self.config.llm_min_confidence,
+            )
+            return None
+
         return Diagnosis(
             source=DiagnosisSource.LLM,
             symptom=issue.symptom,
             root_cause=parsed.get("root_cause", "unknown"),
-            summary=parsed.get("fix", ""),
-            actions=[parsed.get("fix", "")] if parsed.get("fix") else [],
+            summary=fix,
+            actions=[fix],
             confidence=confidence,
             auto_fixable=False,  # never auto-apply free-text LLM suggestions
         )

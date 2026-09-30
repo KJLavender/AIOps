@@ -1,0 +1,26 @@
+# Case 6: NotReady — readiness probe checks a path the server doesn't serve.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: case6-readiness
+  namespace: aiops-demo
+  labels:
+    app: case6-readiness
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: case6-readiness
+  template:
+    metadata:
+      labels:
+        app: case6-readiness
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27-alpine
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 5
