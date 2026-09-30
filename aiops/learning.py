@@ -42,6 +42,7 @@ class LearningEngine:
             cluster=self.config.cluster_name,
             patch=diagnosis.patch,
             target_kind=diagnosis.target_kind,
+            target_name=diagnosis.target_name,
         )
         self.kb.add(entry)
         log.info("learned verified fix for %s", issue.key)

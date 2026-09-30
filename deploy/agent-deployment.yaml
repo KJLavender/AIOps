@@ -8,6 +8,9 @@ metadata:
     app: aiops-agent
 spec:
   replicas: 1
+  # One writer at a time on the RWO Knowledge Base volume.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: aiops-agent
@@ -17,11 +20,38 @@ spec:
         app: aiops-agent
     spec:
       serviceAccountName: aiops-agent
+      # Service links would inject *_PORT=tcp://... env vars that can clash
+      # with our AIOPS_* config (e.g. a Service named aiops-dashboard).
+      enableServiceLinks: false
+      # The dashboard must be a real listening socket on the node: WSL mirrored
+      # networking forwards Windows localhost only to listening sockets, not to
+      # kube-proxy NodePort rules. Cluster DNS is kept for the ollama Service.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # Seed the persistent KB from the image on first start only.
+      initContainers:
+        - name: seed-kb
+          image: aiops-agent:local
+          imagePullPolicy: Never
+          command: ["sh", "-c", "[ -f /kb/knowledge_base.jsonl ] || cp /app/data/knowledge_base.jsonl /kb/"]
+          volumeMounts:
+            - name: kb
+              mountPath: /kb
       containers:
         - name: agent
           image: aiops-agent:local
           imagePullPolicy: Never
+          # Live web dashboard on the node's port 30080
+          # (Windows: http://localhost:30080).
+          args: ["--dashboard"]
+          ports:
+            - name: dashboard
+              containerPort: 30080
           env:
+            - name: AIOPS_DASHBOARD_HOST
+              value: "0.0.0.0"
+            - name: AIOPS_DASHBOARD_PORT
+              value: "30080"
             - name: AIOPS_ALL_NAMESPACES
               value: "false"
             - name: AIOPS_NAMESPACES
@@ -34,18 +64,34 @@ spec:
               value: "120"
             - name: AIOPS_VALIDATION_POLL
               value: "8"
+            - name: AIOPS_KB_PATH
+              value: "/kb/knowledge_base.jsonl"
+            # Operator-approved values: only these get auto-fixed.
+            - name: AIOPS_IMAGE_FALLBACKS
+              value: "nginx=nginx:1.27-alpine,busybox=busybox:1.36"
+            - name: AIOPS_ENV_DEFAULTS
+              value: "DB_HOST=db.aiops-demo.svc.cluster.local"
             # LLM fallback (set true and point at Ollama to enable)
             - name: AIOPS_LLM_ENABLED
               value: "true"
             - name: AIOPS_OLLAMA_ENDPOINT
               value: "http://ollama:11434"
             - name: AIOPS_OLLAMA_MODEL
-              value: "llama3.2:1b"
+              value: "qwen2.5:7b"
             - name: AIOPS_LLM_TIMEOUT
               value: "120"
+            - name: AIOPS_LLM_MIN_CONFIDENCE
+              value: "0.6"
+          volumeMounts:
+            - name: kb
+              mountPath: /kb
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
               memory: 256Mi
+      volumes:
+        - name: kb
+          persistentVolumeClaim:
+            claimName: aiops-kb

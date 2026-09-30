@@ -32,18 +32,27 @@ Learning           (store only verified + validated cases)
 ## Watched symptoms
 
 `CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `OOMKilled`,
-`ContainerCreating`, `Pending`, `Failed`.
+`ContainerCreating`, `CreateContainerConfigError`, `NotReady` (Running but not
+Ready past a grace period), `Pending`, `Failed`.
 
 ## Built-in rules
 
 | Symptom | Action | Auto-fix |
 | --- | --- | --- |
 | `OOMKilled` | raise memory limit, restart Deployment | ✅ patch |
-| `ImagePullBackOff` / `ErrImagePull` | check tag & registry | advisory → KB |
-| `CrashLoopBackOff` | collect logs/events, forward to KB/LLM | advisory → KB/LLM |
+| `ImagePullBackOff` / `ErrImagePull` | tag not found + repo has an approved fallback → swap image; else check tag & registry | ✅ allowlisted / advisory → KB/LLM |
+| `CrashLoopBackOff` + logs name a missing env var | var has an approved value → set it; else precise advisory | ✅ allowlisted / advisory → KB |
+| `CrashLoopBackOff` (other) | collect logs/events, forward to KB/LLM | advisory → KB/LLM |
+| `CreateContainerConfigError` | name the missing ConfigMap / Secret | advisory |
+| `Pending` | explain scheduling failure (resources, selector, taint, PVC) | advisory |
+| `NotReady` | surface the failing readiness probe, forward to KB/LLM | advisory → KB/LLM |
 
 > Safety: only **structured patches** (rules, or KB entries carrying a patch) are
-> applied automatically. Free-text LLM suggestions are **recommendations only**.
+> applied automatically. The agent never guesses an image or env value — only
+> operator-approved ones (`AIOPS_IMAGE_FALLBACKS`, `AIOPS_ENV_DEFAULTS`). A
+> learned image/env patch only auto-applies to the Deployment it was verified on.
+> Free-text LLM suggestions are **recommendations only**, and ones below
+> `AIOPS_LLM_MIN_CONFIDENCE` are dropped.
 
 ## Requirements
 
@@ -94,10 +103,14 @@ Bind address / port: `AIOPS_DASHBOARD_HOST` (default `127.0.0.1`),
 | `AIOPS_DRY_RUN` | `false` | diagnose without patching |
 | `AIOPS_DEFAULT_MEMORY` | `512Mi` | floor for OOM memory bump |
 | `AIOPS_MEMORY_SCALE` | `2.0` | multiply current limit on OOM |
+| `AIOPS_IMAGE_FALLBACKS` | _(empty)_ | approved images, `repo=image,...` (e.g. `nginx=nginx:1.27-alpine`) |
+| `AIOPS_ENV_DEFAULTS` | _(empty)_ | approved env values, `VAR=value,...` |
+| `AIOPS_NOT_READY_GRACE` | `120` | seconds NotReady before it counts as an issue |
 | `AIOPS_VALIDATION_TIMEOUT` | `300` | rollout wait (s) |
 | `AIOPS_LLM_ENABLED` | `false` | enable Ollama fallback |
 | `AIOPS_OLLAMA_ENDPOINT` | `http://localhost:11434` | Ollama URL |
 | `AIOPS_OLLAMA_MODEL` | `llama3` | model name |
+| `AIOPS_LLM_MIN_CONFIDENCE` | `0.6` | drop LLM answers below this confidence |
 | `AIOPS_KB_PATH` | `data/knowledge_base.jsonl` | KB file |
 
 ## HomeLab PoC — fault simulation
@@ -105,16 +118,20 @@ Bind address / port: `AIOPS_DASHBOARD_HOST` (default `127.0.0.1`),
 ```powershell
 kubectl apply -f manifests/00-namespace.yaml
 kubectl apply -f manifests/case2-oomkilled.yaml   # OOMKilled → auto memory bump
-kubectl apply -f manifests/case3-imagepull.yaml   # ImagePullBackOff → advisory
+kubectl apply -f manifests/case3-imagepull.yaml   # ImagePullBackOff → auto image swap (if allowlisted)
 kubectl apply -f manifests/case1-crashloop.yaml   # CrashLoopBackOff → KB/LLM
-kubectl apply -f manifests/case4-missing-env.yaml # Missing ENV → CrashLoop
+kubectl apply -f manifests/case4-missing-env.yaml # Missing ENV → auto env fix (if allowlisted)
+kubectl apply -f manifests/case5-pending.yaml     # Pending (Insufficient memory) → advisory
+kubectl apply -f manifests/case6-readiness.yaml   # NotReady (bad readiness probe) → KB/LLM
+kubectl apply -f manifests/case7-missing-configmap.yaml # CreateContainerConfigError → advisory
 
 python -m aiops
 ```
 
-Case 2 (OOMKilled) is the end-to-end demo: the agent detects the OOM, patches the
-Deployment memory limit, waits for rollout, confirms Running/Ready, and records a
-verified KB entry.
+Cases 2, 3 and 4 run end-to-end (detect → patch → rollout → Running/Ready →
+verified KB entry); 3 and 4 need the allowlists that `deploy/agent-deployment.yaml`
+sets. In-cluster, the KB lives on the `aiops-kb` PVC (`deploy/agent-pvc.yaml`) so
+learned fixes survive pod restarts.
 
 ## Tests
 

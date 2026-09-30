@@ -15,6 +15,8 @@ class Symptom(str, Enum):
     ERR_IMAGE_PULL = "ErrImagePull"
     OOM_KILLED = "OOMKilled"
     CONTAINER_CREATING = "ContainerCreating"
+    CREATE_CONTAINER_CONFIG_ERROR = "CreateContainerConfigError"
+    NOT_READY = "NotReady"
     PENDING = "Pending"
     FAILED = "Failed"
     UNKNOWN = "Unknown"
@@ -35,6 +37,8 @@ WATCHED_SYMPTOMS: frozenset[Symptom] = frozenset(
         Symptom.ERR_IMAGE_PULL,
         Symptom.OOM_KILLED,
         Symptom.CONTAINER_CREATING,
+        Symptom.CREATE_CONTAINER_CONFIG_ERROR,
+        Symptom.NOT_READY,
         Symptom.PENDING,
         Symptom.FAILED,
     }
@@ -85,6 +89,9 @@ class Diagnosis:
 
     # When True the pipeline should try KB/LLM instead of stopping at the rule.
     forward_to_kb: bool = False
+    # False when the rule already pinpointed the cause: consult the KB only,
+    # so a vague LLM answer never overrides a precise rule diagnosis.
+    consult_llm: bool = True
 
 
 @dataclass
@@ -118,6 +125,9 @@ class KBEntry:
     # Optional structured patch so a KB hit can auto-remediate like a rule.
     patch: Optional[dict[str, Any]] = None
     target_kind: Optional[str] = None
+    # Workload the patch was verified on. Workload-specific patches (image, env)
+    # only auto-apply to this Deployment; None = legacy / generic entry.
+    target_name: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,6 +141,7 @@ class KBEntry:
             "cluster": self.cluster,
             "patch": self.patch,
             "target_kind": self.target_kind,
+            "target_name": self.target_name,
         }
 
     @classmethod
@@ -146,4 +157,5 @@ class KBEntry:
             cluster=data.get("cluster", ""),
             patch=data.get("patch"),
             target_kind=data.get("target_kind"),
+            target_name=data.get("target_name"),
         )

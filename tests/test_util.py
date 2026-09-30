@@ -1,4 +1,4 @@
-from aiops.util import format_memory_mib, parse_memory_to_bytes, tokenize
+from aiops.util import format_memory_mib, image_repository, parse_memory_to_bytes, tokenize
 
 
 def test_parse_binary_suffixes():
@@ -21,3 +21,12 @@ def test_oom_scale():
 
 def test_tokenize():
     assert tokenize("OOMKilled memory") == {"oomkilled", "memory"}
+
+
+def test_image_repository():
+    assert image_repository("nginx:notfound") == "nginx"
+    assert image_repository("nginx") == "nginx"
+    assert image_repository("docker.io/library/nginx:1.27") == "docker.io/library/nginx"
+    assert image_repository("localhost:5000/app:v1") == "localhost:5000/app"
+    assert image_repository("localhost:5000/app") == "localhost:5000/app"
+    assert image_repository("app@sha256:abc") == "app"

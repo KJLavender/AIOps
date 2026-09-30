@@ -41,3 +41,12 @@ _TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
 def tokenize(text: str) -> set[str]:
     """Lowercase word tokens, used by the Phase 1 keyword Knowledge Base search."""
     return {t.lower() for t in _TOKEN_RE.findall(text or "")}
+
+
+def image_repository(image: str) -> str:
+    """Strip tag/digest: 'nginx:1.27' -> 'nginx', 'reg:5000/app:v1' -> 'reg:5000/app'."""
+    name = image.split("@", 1)[0]
+    last = name.rsplit("/", 1)[-1]
+    if ":" in last:
+        name = name[: len(name) - len(last)] + last.split(":", 1)[0]
+    return name
