@@ -47,6 +47,8 @@ AIOps/
 │   ├── patches.py             # strategic-merge patch 產生器（記憶體 / image / env）
 │   ├── util.py                # 記憶體單位解析、分詞
 │   ├── fakes.py               # 假叢集（--demo 模式用，免 kubectl）
+│   ├── events.py              # Agent 事件時間軸（記憶體 ring buffer，供儀表板讀取）
+│   ├── dashboard.py           # 即時網頁儀表板（http.server，/ 與 /api/state）
 │   ├── rules/
 │   │   ├── base.py            # Rule 基底類別、RuleContext
 │   │   ├── builtin.py         # 內建三條規則
@@ -236,14 +238,20 @@ LearningEngine.record (寫入 KB，verified=true)
 | `AIOPS_OLLAMA_MODEL` | `llama3` | 模型名稱 |
 | `AIOPS_LLM_TIMEOUT` | `60` | LLM 請求逾時（秒） |
 | `AIOPS_LOG_TAIL` | `200` | 抓取 log 的行數 |
+| `AIOPS_DASHBOARD_HOST` | `127.0.0.1` | 儀表板綁定位址（叢集內用 `0.0.0.0`） |
+| `AIOPS_DASHBOARD_PORT` | `8080` | 儀表板 port（可用 `--port` 覆寫） |
 
 ---
 
 ## 10. 執行方式
 
 ```powershell
-# 不需要 kubectl：用內建假叢集跑一次完整流程（會寫入 KB）
+# 不需要 kubectl：用內建假叢集跑一次完整流程（KB 寫到暫存檔，不影響 data/）
 python -m aiops --demo
+
+# 即時網頁儀表板 http://localhost:8080（可加 --demo 免叢集試用）
+python -m aiops --dashboard
+python -m aiops --demo --dashboard
 
 # 掃描一次，不修改叢集
 python -m aiops --once --dry-run
@@ -260,8 +268,20 @@ python -m aiops
 | `--once` | 只掃描一次後結束 |
 | `--dry-run` | 診斷但不套用 patch |
 | `--no-auto-fix` | 只輸出建議 |
-| `--demo` | 使用 `fakes.FakeKubeClient`，並把驗證等待時間設為 0（README 未記載） |
+| `--demo` | 使用 `fakes.FakeKubeClient`，驗證等待時間設為 0，KB 寫到系統暫存資料夾的 `aiops-demo-kb.jsonl` |
+| `--dashboard` | 啟動網頁儀表板並持續監看；搭配 `--demo` 時第一次掃描延後 10 秒，方便先看到異常狀態 |
+| `--port` | 儀表板 port |
 | `--log-level` | 預設 `INFO` |
+
+### 儀表板內容
+
+- **統計列**：Pod 總數、正常、異常、本次已自動修復數量
+- **Pod 卡片**：狀態顏色、Ready、重啟次數、image、記憶體上限、異常訊息，以及 Agent 對該 workload 的最新動作（依 workload 對應，所以 rollout 換了新 Pod 名稱也接得上）
+- **事件時間軸**：偵測 → 診斷 → 修復 → 驗證 → 學習，各步驟的時間與結果
+- **知識庫**：總筆數與最近 5 筆紀錄
+- 支援 namespace / 狀態篩選、名稱搜尋，深淺色主題自動切換；每 3 秒更新
+
+Pod 狀態是儀表板每次請求時直接向叢集查詢（快取 2 秒），所以 Agent 在等待驗證時畫面仍會即時更新。Agent 事件只存在記憶體，重啟後清空。
 
 `--demo` 的預期輸出：case2（OOMKilled）完成 patch → 驗證 → 學習並顯示 `RESOLVED`；case1、case3、case4 只輸出建議。
 
@@ -320,8 +340,9 @@ pytest -q
 | `test_rules.py` | OOM 記憶體下限與倍增、無 Deployment 時為建議、ImagePull/CrashLoop 轉交 KB、container 查找 |
 | `test_kb.py` | 新增/搜尋往返、忽略未驗證紀錄、症狀不符不命中 |
 | `test_util.py` | 記憶體單位解析與格式化、分詞 |
+| `test_dashboard.py` | workload 對應、事件時間軸、demo 掃描前後的儀表板狀態、HTTP 端點 |
 
-目前結果：**17 passed**。尚無 `pipeline`、`validation`、`remediation`、`llm/ollama` 的測試。
+目前結果：**22 passed**。尚無 `validation`、`remediation`、`llm/ollama` 的專門測試（pipeline 由 `test_dashboard.py` 的 demo 流程間接覆蓋）。
 
 ---
 
@@ -332,7 +353,7 @@ pytest -q
 1. **`--dry-run` 仍會執行驗證**：dry-run 時 `Remediator` 回傳 `success=True`，`Pipeline` 接著呼叫 `Validator`，對**未修改**的 Deployment 執行 `rollout status`。對仍在崩潰的 Pod，這會一直等到 `validation_timeout_seconds`（預設 300 秒）才判定失敗，使 `--once --dry-run` 可能卡住數分鐘。
 2. **叢集內部署的 KB 不會持久化**：代理 Pod 把 KB 寫在容器內的 `/app/data/`，沒有掛載 volume，Pod 重建後學到的紀錄就會遺失。
 3. **OOMKilled 的 KB 紀錄目前不會被查詢**：`OOMKilledRule` 永遠回傳 `forward_to_kb=False` 的診斷，所以 OOM 案例不會走到 KB 搜尋，學到的 OOM 紀錄只寫不讀。
-4. **KB 重複紀錄**：每次成功修復都會 append，沒有去重；目前已有兩筆幾乎相同的 case2 紀錄。另外 `--demo` 也會寫入同一個 KB 檔案。
+4. **KB 重複紀錄**：每次成功修復都會 append，沒有去重；目前已有兩筆幾乎相同的 case2 紀錄。（`--demo` 現在改寫到暫存檔，不再汙染 `data/`。）
 5. **Pending / ContainerCreating 缺少上下文**：`_build_context` 只替 CrashLoopBackOff / Failed 收集 events，這些症狀送進 KB / LLM 時沒有 events 可用，而 events 正是判斷排程或掛載問題的關鍵。
 6. **README 與實作不一致**：
    - README 說「stable for 5 min」，實際穩定期預設為 60 秒（300 秒是 rollout 逾時）。

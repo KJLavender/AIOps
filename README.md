@@ -66,7 +66,22 @@ python -m aiops --no-auto-fix
 
 # Full self-healing loop
 python -m aiops
+
+# Self-healing loop + live web dashboard at http://localhost:8080
+python -m aiops --dashboard
+
+# Dashboard against the built-in fake cluster (no kubectl needed)
+python -m aiops --demo --dashboard
 ```
+
+### Dashboard
+
+`--dashboard` serves a stdlib-only web page (poll every 3s) showing each Pod's
+status, container image / memory limit, the agent's latest action per workload,
+an event timeline (detected → diagnosed → remediated → validated → learned) and
+recent Knowledge Base entries. JSON is available at `/api/state`.
+Bind address / port: `AIOPS_DASHBOARD_HOST` (default `127.0.0.1`),
+`AIOPS_DASHBOARD_PORT` / `--port` (default `8080`).
 
 ### Configuration (env vars)
 

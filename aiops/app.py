@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Optional
 
 from .collector import Collector
 from .config import Config
+from .events import EventLog
 from .knowledge_base import JsonlKnowledgeBase
 from .kube import KubeClient
 from .learning import LearningEngine
@@ -18,7 +20,9 @@ from .validation import Validator
 log = logging.getLogger("aiops.app")
 
 
-def build_pipeline(config: Config, kube=None) -> tuple[Collector, Pipeline]:
+def build_pipeline(
+    config: Config, kube=None, events: Optional[EventLog] = None
+) -> tuple[Collector, Pipeline]:
     kube = kube if kube is not None else KubeClient(config)
     collector = Collector(kube, config)
     kb = JsonlKnowledgeBase(config.kb_path, config.kb_score_threshold)
@@ -32,6 +36,7 @@ def build_pipeline(config: Config, kube=None) -> tuple[Collector, Pipeline]:
         remediator=Remediator(kube, config),
         validator=Validator(kube, config),
         learning=LearningEngine(kb, config),
+        events=events,
     )
     return collector, pipeline
 
@@ -39,8 +44,12 @@ def build_pipeline(config: Config, kube=None) -> tuple[Collector, Pipeline]:
 class Agent:
     def __init__(self, config: Config, kube=None) -> None:
         self.config = config
-        self.collector, self.pipeline = build_pipeline(config, kube=kube)
+        self.events = EventLog()
+        self.collector, self.pipeline = build_pipeline(config, kube=kube, events=self.events)
         self._last_handled: dict[str, float] = {}
+        # Read by the dashboard.
+        self.last_scan_at: Optional[float] = None
+        self.last_scan_error: Optional[str] = None
 
     def _on_cooldown(self, key: str) -> bool:
         last = self._last_handled.get(key)
@@ -49,7 +58,13 @@ class Agent:
         return (time.time() - last) < self.config.handle_cooldown_seconds
 
     def tick(self) -> int:
-        issues = self.collector.scan()
+        try:
+            issues = self.collector.scan()
+        except Exception as exc:
+            self.last_scan_error = str(exc)
+            raise
+        self.last_scan_at = time.time()
+        self.last_scan_error = None
         handled = 0
         for issue in issues:
             if self._on_cooldown(issue.key):
@@ -59,8 +74,9 @@ class Agent:
             try:
                 self.pipeline.handle(issue)
                 handled += 1
-            except Exception:  # keep the loop alive on unexpected errors
+            except Exception as exc:  # keep the loop alive on unexpected errors
                 log.exception("error handling %s", issue.key)
+                self.events.emit("error", str(exc), issue, level="error")
         return handled
 
     def run_forever(self) -> None:

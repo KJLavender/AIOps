@@ -23,17 +23,22 @@ class Collector:
         self.kube = kube
         self.config = config
 
+    def list_watched_pods(self) -> list[dict[str, Any]]:
+        namespaces = [None] if self.config.all_namespaces else self.config.namespaces
+        pods: list[dict[str, Any]] = []
+        for ns in namespaces:
+            pods.extend(self.kube.list_pods(namespace=ns))
+        return pods
+
     def scan(self) -> list[PodIssue]:
         issues: list[PodIssue] = []
-        namespaces = [None] if self.config.all_namespaces else self.config.namespaces
-        for ns in namespaces:
-            for pod in self.kube.list_pods(namespace=ns):
-                issue = self._analyze(pod)
-                if issue and issue.symptom in WATCHED_SYMPTOMS:
-                    issues.append(issue)
+        for pod in self.list_watched_pods():
+            issue = self.analyze(pod)
+            if issue and issue.symptom in WATCHED_SYMPTOMS:
+                issues.append(issue)
         return issues
 
-    def _analyze(self, pod: dict[str, Any]) -> Optional[PodIssue]:
+    def analyze(self, pod: dict[str, Any]) -> Optional[PodIssue]:
         meta = pod.get("metadata", {})
         status = pod.get("status", {})
         namespace = meta.get("namespace", "default")
