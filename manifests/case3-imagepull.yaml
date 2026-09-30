@@ -1,0 +1,21 @@
+# Case 3: ImagePullBackOff — image tag does not exist.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: case3-imagepull
+  namespace: aiops-demo
+  labels:
+    app: case3-imagepull
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: case3-imagepull
+  template:
+    metadata:
+      labels:
+        app: case3-imagepull
+    spec:
+      containers:
+        - name: app
+          image: nginx:notfound

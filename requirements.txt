@@ -1,0 +1,3 @@
+# AI Ops Agent is stdlib-only (no third-party runtime deps).
+# Dev/test only:
+#   pytest

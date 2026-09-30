@@ -1,0 +1,51 @@
+# The AI Ops agent running as a resident Deployment, self-monitoring aiops-demo.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiops-agent
+  namespace: aiops-demo
+  labels:
+    app: aiops-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiops-agent
+  template:
+    metadata:
+      labels:
+        app: aiops-agent
+    spec:
+      serviceAccountName: aiops-agent
+      containers:
+        - name: agent
+          image: aiops-agent:local
+          imagePullPolicy: Never
+          env:
+            - name: AIOPS_ALL_NAMESPACES
+              value: "false"
+            - name: AIOPS_NAMESPACES
+              value: "aiops-demo"
+            - name: AIOPS_POLL_INTERVAL
+              value: "20"
+            - name: AIOPS_STABILITY
+              value: "15"
+            - name: AIOPS_VALIDATION_TIMEOUT
+              value: "120"
+            - name: AIOPS_VALIDATION_POLL
+              value: "8"
+            # LLM fallback (set true and point at Ollama to enable)
+            - name: AIOPS_LLM_ENABLED
+              value: "true"
+            - name: AIOPS_OLLAMA_ENDPOINT
+              value: "http://ollama:11434"
+            - name: AIOPS_OLLAMA_MODEL
+              value: "llama3.2:1b"
+            - name: AIOPS_LLM_TIMEOUT
+              value: "120"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

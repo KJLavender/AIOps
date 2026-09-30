@@ -1,0 +1,26 @@
+# Routes the in-cluster name "ollama" to the host's Ollama (running in WSL).
+# Selector-less Service + manual Endpoints => points at the host IP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: aiops-demo
+spec:
+  ports:
+    - name: http
+      port: 11434
+      targetPort: 11434
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: ollama
+  namespace: aiops-demo
+subsets:
+  - addresses:
+      - ip: 192.168.0.16
+    ports:
+      - name: http
+        port: 11434
+        protocol: TCP
