@@ -1,0 +1,25 @@
+# Case 1: CrashLoopBackOff — container exits with a non-zero code immediately.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: case1-crashloop
+  namespace: aiops-demo
+  labels:
+    app: case1-crashloop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: case1-crashloop
+  template:
+    metadata:
+      labels:
+        app: case1-crashloop
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - exit 1

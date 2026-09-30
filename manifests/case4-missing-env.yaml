@@ -1,0 +1,30 @@
+# Case 4: Missing ENV — app raises because DB_HOST is not set (CrashLoopBackOff).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: case4-missing-env
+  namespace: aiops-demo
+  labels:
+    app: case4-missing-env
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: case4-missing-env
+  template:
+    metadata:
+      labels:
+        app: case4-missing-env
+    spec:
+      containers:
+        - name: app
+          image: python:3.12-slim
+          command:
+            - python
+            - -c
+            - |
+              import os
+              DB_HOST = os.getenv("DB_HOST")
+              if not DB_HOST:
+                  raise Exception("DB_HOST is not set")
+              import time; time.sleep(3600)
