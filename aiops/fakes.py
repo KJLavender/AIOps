@@ -9,10 +9,10 @@ from __future__ import annotations
 from typing import Any, Optional
 
 _DEPLOYMENTS = {
-    "case1-crashloop": {"symptom": "CrashLoopBackOff", "memory": None},
-    "case2-oomkilled": {"symptom": "OOMKilled", "memory": "64Mi"},
-    "case3-imagepull": {"symptom": "ImagePullBackOff", "memory": None},
-    "case4-missing-env": {"symptom": "CrashLoopBackOff", "memory": None},
+    "case1-crashloop": {"symptom": "CrashLoopBackOff", "memory": None, "image": "busybox:1.36"},
+    "case2-oomkilled": {"symptom": "OOMKilled", "memory": "64Mi", "image": "python:3.12-slim"},
+    "case3-imagepull": {"symptom": "ImagePullBackOff", "memory": None, "image": "nginx:notfound"},
+    "case4-missing-env": {"symptom": "CrashLoopBackOff", "memory": None, "image": "python:3.12-slim"},
 }
 
 _LOGS = {
@@ -77,10 +77,22 @@ class FakeKubeClient:
         }
 
     def _pod(self, dep_name: str) -> dict[str, Any]:
-        pod_name = f"{dep_name}-abc123"
+        spec = _DEPLOYMENTS[dep_name]
         if dep_name in self.healed:
-            return _healthy_pod(dep_name, pod_name)
-        return _faulty_pod(dep_name, pod_name, _DEPLOYMENTS[dep_name]["symptom"])
+            # A rollout replaces the pod, so it comes back under a new name.
+            pod = _healthy_pod(dep_name, f"{dep_name}-def456")
+            memory = "512Mi" if spec["memory"] else None
+        else:
+            pod = _faulty_pod(dep_name, f"{dep_name}-abc123", spec["symptom"])
+            memory = spec["memory"]
+        pod["metadata"]["ownerReferences"] = [
+            {"kind": "ReplicaSet", "name": f"{dep_name}-7c9f5d"}
+        ]
+        container: dict[str, Any] = {"name": "app", "image": spec["image"]}
+        if memory:
+            container["resources"] = {"limits": {"memory": memory}}
+        pod["spec"] = {"containers": [container]}
+        return pod
 
 
 def _dep_of(pod: str) -> str:

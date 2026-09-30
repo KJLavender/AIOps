@@ -10,6 +10,7 @@ from typing import Optional
 
 from .collector import Collector
 from .config import Config
+from .events import EventLog
 from .kube import KubeClient
 from .knowledge_base import KnowledgeBase
 from .learning import LearningEngine
@@ -34,6 +35,7 @@ class Pipeline:
         remediator: Remediator,
         validator: Validator,
         learning: LearningEngine,
+        events: Optional[EventLog] = None,
     ) -> None:
         self.kube = kube
         self.config = config
@@ -43,9 +45,11 @@ class Pipeline:
         self.remediator = remediator
         self.validator = validator
         self.learning = learning
+        self.events = events if events is not None else EventLog()
 
     def handle(self, issue: PodIssue) -> None:
         log.info("handling issue %s: %s", issue.key, issue.message.strip()[:120])
+        self.events.emit("detected", issue.message.strip()[:200], issue, level="warn")
         ctx = self._build_context(issue)
 
         diagnosis = self.rule_engine.diagnose(issue, ctx)
@@ -60,29 +64,52 @@ class Pipeline:
 
         if diagnosis is None:
             log.warning("no diagnosis for %s; leaving for human review", issue.key)
+            self.events.emit(
+                "no_diagnosis", "No rule/KB/LLM match; needs human review", issue, level="error"
+            )
             return
 
         self._report(issue, diagnosis)
+        source = diagnosis.source.value
+        self.events.emit(
+            "diagnosed", f"root cause: {diagnosis.root_cause}", issue, source=source
+        )
 
         if not (diagnosis.auto_fixable and diagnosis.patch):
             log.info("[recommendation only] %s -> %s", issue.key, diagnosis.summary)
+            self.events.emit("recommended", diagnosis.summary, issue, level="warn", source=source)
             return
 
         if not self.config.auto_fix:
             log.info("auto_fix disabled; skipping remediation for %s", issue.key)
+            self.events.emit(
+                "recommended", f"auto-fix disabled: {diagnosis.summary}", issue,
+                level="warn", source=source,
+            )
             return
 
         remediation = self.remediator.remediate(diagnosis)
         if not remediation.success:
             log.error("remediation failed for %s: %s", issue.key, remediation.detail)
+            self.events.emit(
+                "remediation_failed", remediation.detail, issue, level="error", source=source
+            )
             return
+        self.events.emit(
+            "remediated", f"{diagnosis.summary} ({remediation.detail})", issue, source=source
+        )
 
         validation = self.validator.validate(diagnosis)
         if validation.success:
             self.learning.record(issue, diagnosis, remediation, validation)
             log.info("RESOLVED %s (%s)", issue.key, validation.detail)
+            self.events.emit("validated", validation.detail, issue, level="ok", source=source)
+            self.events.emit("learned", "verified fix stored in KB", issue, level="ok", source=source)
         else:
             log.error("validation failed for %s: %s", issue.key, validation.detail)
+            self.events.emit(
+                "validation_failed", validation.detail, issue, level="error", source=source
+            )
 
     # --- helpers -----------------------------------------------------------
     def _build_context(self, issue: PodIssue) -> RuleContext:

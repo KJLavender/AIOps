@@ -54,6 +54,10 @@ class Config:
     llm_timeout_seconds: int = 60
     log_tail_lines: int = 200
 
+    # --- Dashboard ---
+    dashboard_host: str = "127.0.0.1"  # use 0.0.0.0 in-cluster
+    dashboard_port: int = 8080
+
     @classmethod
     def from_env(cls) -> "Config":
         ns_env = os.getenv("AIOPS_NAMESPACES")
@@ -78,4 +82,6 @@ class Config:
             ollama_model=os.getenv("AIOPS_OLLAMA_MODEL", "llama3"),
             llm_timeout_seconds=_env_int("AIOPS_LLM_TIMEOUT", 60),
             log_tail_lines=_env_int("AIOPS_LOG_TAIL", 200),
+            dashboard_host=os.getenv("AIOPS_DASHBOARD_HOST", "127.0.0.1"),
+            dashboard_port=_env_int("AIOPS_DASHBOARD_PORT", 8080),
         )

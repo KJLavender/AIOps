@@ -34,6 +34,10 @@ class JsonlKnowledgeBase(KnowledgeBase):
                     log.warning("skipping malformed KB line")
         return entries
 
+    def entries(self) -> list[KBEntry]:
+        """All stored records, oldest first (read-only view for the dashboard)."""
+        return self._load()
+
     def search(self, issue: PodIssue, query_text: str) -> Optional[KBEntry]:
         query_tokens = tokenize(f"{issue.symptom.value} {issue.message} {query_text}")
         if not query_tokens:
