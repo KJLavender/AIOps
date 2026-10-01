@@ -18,13 +18,15 @@ Rule Engine        (known symptoms → structured fix)
    ↓ (miss / defer)
 Collect Logs + Events
    ↓
-Knowledge Base     (verified structured records)
+Knowledge Base     (same workload + symptom first, then keyword match)
    ↓ (miss)
-LLM analysis       (only when rule + KB both miss; off by default)
+Web search         (Exa — same backend as the agent-reach skill; optional)
    ↓
+LLM analysis       (logs + events + spec + web results; may name ONE fix from
+   ↓                a bounded catalog, otherwise recommendation only)
 Auto Remediation   (kubectl patch — structured patches only)
    ↓
-Validation         (Running & Ready & stable for 5 min)
+Validation         (Running & Ready & stable) ──fail──► rollout undo
    ↓
 Learning           (store only verified + validated cases)
 ```
@@ -53,6 +55,25 @@ Ready past a grace period), `Pending`, `Failed`.
 > learned image/env patch only auto-applies to the Deployment it was verified on.
 > Free-text LLM suggestions are **recommendations only**, and ones below
 > `AIOPS_LLM_MIN_CONFIDENCE` are dropped.
+
+### Web search + LLM fixes (`AIOPS_WEB_SEARCH`, `AIOPS_LLM_AUTO_FIX`)
+
+For failures no rule or KB entry solves, the agent searches the web for the
+error (cluster IPs and pod hashes stripped), hands the results to the LLM as
+*untrusted* context, and lets it name one action from `aiops/actions.py`:
+
+| Symptom | Allowed actions | Guard rails |
+| --- | --- | --- |
+| `NotReady` | `set_readiness_probe_path`, `rollout_restart` | path must be a plain URL path, differ from the failing one, **and answer 2xx/3xx on the pod before it is applied** |
+| `Pending` | `lower_requests` | may only lower existing requests |
+| `OOMKilled` | `set_memory_limit` | must raise the limit, capped by `AIOPS_MAX_MEMORY` |
+
+The LLM never writes a patch; the action builds it from the live Deployment.
+Anything else it suggests (new image, privileged sidecar, ...) has no action to
+map onto and stays a recommendation. LLM confidence must reach
+`AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE`, a fix that fails validation is rolled back
+(`kubectl rollout undo`) and never retried, and a validated fix is learned so
+the next occurrence on that workload is fixed straight from the KB.
 
 ## Requirements
 
@@ -90,7 +111,9 @@ status, container image / memory limit, the agent's latest action per workload,
 an event timeline (detected → diagnosed → remediated → validated → learned) and
 recent Knowledge Base entries. JSON is available at `/api/state`.
 Bind address / port: `AIOPS_DASHBOARD_HOST` (default `127.0.0.1`),
-`AIOPS_DASHBOARD_PORT` / `--port` (default `8080`).
+`AIOPS_DASHBOARD_PORT` / `--port` (default `8080`). Prometheus metrics
+(`aiops_events_total{stage,source,namespace}`, `aiops_kb_entries`, scan health)
+are served at `/metrics`.
 
 ### Configuration (env vars)
 
@@ -111,6 +134,15 @@ Bind address / port: `AIOPS_DASHBOARD_HOST` (default `127.0.0.1`),
 | `AIOPS_OLLAMA_ENDPOINT` | `http://localhost:11434` | Ollama URL |
 | `AIOPS_OLLAMA_MODEL` | `llama3` | model name |
 | `AIOPS_LLM_MIN_CONFIDENCE` | `0.6` | drop LLM answers below this confidence |
+| `AIOPS_LLM_NUM_CTX` | `8192` | Ollama context window (the default silently truncates long prompts) |
+| `AIOPS_WEB_SEARCH` | `false` | search the web for unknown failures |
+| `AIOPS_EXA_ENDPOINT` | `https://mcp.exa.ai/mcp` | Exa MCP endpoint (no key needed) |
+| `AIOPS_LLM_AUTO_FIX` | `false` | let the LLM pick a catalog action |
+| `AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE` | `0.7` | confidence needed to apply it |
+| `AIOPS_MAX_MEMORY` | `2Gi` | cap for LLM-proposed memory raises |
+| `AIOPS_ACTION_PRECHECK` | `true` | probe a proposed readiness path on the pod first |
+| `AIOPS_ROLLBACK` | `true` | `rollout undo` when validation fails |
+| `AIOPS_PENDING_GRACE` | `60` | seconds Pending / ContainerCreating before it counts |
 | `AIOPS_KB_PATH` | `data/knowledge_base.jsonl` | KB file |
 
 ## HomeLab PoC — fault simulation
@@ -133,11 +165,44 @@ verified KB entry); 3 and 4 need the allowlists that `deploy/agent-deployment.ya
 sets. In-cluster, the KB lives on the `aiops-kb` PVC (`deploy/agent-pvc.yaml`) so
 learned fixes survive pod restarts.
 
+## HomeLab stack: monitoring + a real service
+
+Everything below runs on the same k3s node; see each folder for details.
+
+| URL (from Windows) | What |
+| --- | --- |
+| http://grafana.localhost:8000 | Grafana — stock Kubernetes dashboards + **AIOps Agent** + **Flight Deals** |
+| http://flights.localhost:8000 | Flight watcher web UI (type commands in plain Chinese) |
+| http://ntfy.localhost:8000/flights | ntfy — push notifications + the same chat channel |
+| http://localhost:30080 | The agent's own live dashboard |
+
+- **`monitoring/`** — installed by the k3s helm-controller (`HelmChart` objects,
+  no helm CLI needed): kube-prometheus-stack (Prometheus, Grafana,
+  node-exporter, kube-state-metrics), Loki in Monolithic mode on a local-path
+  PVC (7-day retention), and Grafana Alloy shipping every pod's logs plus
+  Kubernetes events to Loki. `00-traefik-hostnetwork.yaml` runs Traefik on the
+  host network because WSL2 mirrored networking only forwards Windows
+  localhost to real listening sockets. Dashboards are generated by
+  `monitoring/dashboards/generate.py`.
+- **`services/flight-watcher/`** — checks Google Flights every 3 h for each
+  watched route and notifies via ntfy on a new low or when a target price is
+  hit. Change what it watches by typing, e.g. `台北到東京`,
+  `高雄飛大阪 12月 來回5天 5000以下`, `列表`, `刪除 #2`, in the web UI or the
+  ntfy `flights` topic. The AIOps agent watches this namespace too.
+
+```powershell
+kubectl -n monitoring create secret generic grafana-admin `
+  --from-literal=admin-user=admin --from-literal=admin-password=<password>
+kubectl apply -f monitoring/ ; kubectl apply -f monitoring/dashboards/
+kubectl apply -f services/flight-watcher/k8s/
+kubectl apply -f deploy/
+```
+
 ## Tests
 
 ```powershell
 pip install pytest
-pytest -q
+pytest -q        # agent + services/flight-watcher tests
 ```
 
 ## Knowledge Base format
@@ -157,6 +222,7 @@ Structured records only — never free-form Q&A:
 
 ## Roadmap
 
-Phase 1 (this repo): Rule Engine + KB + validation + learning.
+Phase 1 (this repo): Rule Engine + KB + validation + learning, web-search-assisted
+LLM fixes from a bounded catalog with rollback, Prometheus/Loki/Grafana monitoring.
 Later: vector KB (Qdrant/Chroma/Elasticsearch), and split into a Multi-Agent
 platform — Monitoring / Diagnosis / Repair / Validation / Knowledge agents.
