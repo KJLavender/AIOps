@@ -1,0 +1,65 @@
+# Grafana Alloy ships every pod's logs plus Kubernetes events to Loki
+# (Promtail reached EOL on 2026-03-02). It tails logs through the API server,
+# so one replica covers the whole cluster.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: alloy
+  namespace: kube-system
+spec:
+  repo: https://grafana.github.io/helm-charts
+  chart: alloy
+  version: 1.13.0
+  targetNamespace: monitoring
+  createNamespace: true
+  valuesContent: |-
+    controller:
+      type: deployment
+      replicas: 1
+    alloy:
+      resources:
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {memory: 512Mi}
+      configMap:
+        content: |
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+
+          discovery.relabel "pods" {
+            targets = discovery.kubernetes.pods.targets
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              target_label  = "container"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_label_app"]
+              separator     = ""
+              target_label  = "app"
+            }
+          }
+
+          loki.source.kubernetes "pods" {
+            targets    = discovery.relabel.pods.output
+            forward_to = [loki.write.default.receiver]
+          }
+
+          loki.source.kubernetes_events "events" {
+            job_name   = "kubernetes-events"
+            log_format = "logfmt"
+            forward_to = [loki.write.default.receiver]
+          }
+
+          loki.write "default" {
+            endpoint {
+              url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+            }
+          }

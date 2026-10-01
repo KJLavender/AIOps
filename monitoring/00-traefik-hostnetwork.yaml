@@ -1,0 +1,23 @@
+# WSL2 mirrored networking only forwards Windows localhost to sockets that are
+# really listening on the node, not to kube-proxy / hostPort rules. Running the
+# bundled Traefik on the host network makes every Ingress reachable from Windows
+# at http://<name>.localhost:8000 (browsers resolve *.localhost to 127.0.0.1).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    hostNetwork: true
+    ports:
+      traefik:
+        port: 9000   # default 8080 is too common on a dev box
+      metrics:
+        port: 9102   # 9100 belongs to node-exporter (also host network)
+    # Two pods can't bind the same host ports: replace instead of surge.
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
+        maxSurge: 0

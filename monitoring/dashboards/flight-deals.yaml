@@ -1,0 +1,637 @@
+# Generated dashboard; Grafana's sidecar loads every ConfigMap labelled grafana_dashboard.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-flight-deals
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: Travel
+data:
+  dashboard-flight-deals.json: |-
+    {
+     "uid": "flight-deals",
+     "title": "Flight Deals",
+     "tags": [
+      "travel",
+      "flights"
+     ],
+     "timezone": "browser",
+     "editable": true,
+     "schemaVersion": 39,
+     "refresh": "1m",
+     "time": {
+      "from": "now-7d",
+      "to": "now"
+     },
+     "panels": [
+      {
+       "id": 1,
+       "type": "row",
+       "title": "Current fares",
+       "collapsed": false,
+       "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+       },
+       "panels": []
+      },
+      {
+       "id": 2,
+       "type": "stat",
+       "title": "Cheapest fare per route (TWD)",
+       "description": "Latest cheapest fare found in each route's date window",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 16,
+        "h": 5
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "max by (watch_id, route) (flightwatch_price)",
+         "instant": true,
+         "legendFormat": "#{{watch_id}} {{route}}"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "text",
+            "value": null
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 3,
+       "type": "stat",
+       "title": "Routes watched",
+       "description": "",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 5
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "flightwatch_watches_active",
+         "instant": true,
+         "legendFormat": ""
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "text",
+            "value": null
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 4,
+       "type": "stat",
+       "title": "Stalest route check",
+       "description": "Age of the least recently checked route. Checks run every 3h; red after 4h = scheduler stuck",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 5
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "time() - min(flightwatch_last_check_timestamp_seconds)",
+         "instant": true,
+         "legendFormat": ""
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "#0ca30c",
+            "value": null
+           },
+           {
+            "color": "#d03b3b",
+            "value": 14400
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 5,
+       "type": "row",
+       "title": "History",
+       "collapsed": false,
+       "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 1
+       },
+       "panels": []
+      },
+      {
+       "id": 6,
+       "type": "timeseries",
+       "title": "Cheapest fare over time (TWD)",
+       "description": "One line per watched route; points = checks (every 3h)",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 16,
+        "h": 10
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "max by (watch_id, route) (flightwatch_price)",
+         "legendFormat": "#{{watch_id}} {{route}}"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "min": null,
+         "color": {
+          "mode": "palette-classic"
+         },
+         "custom": {
+          "drawStyle": "line",
+          "lineWidth": 2,
+          "fillOpacity": 0,
+          "pointSize": 8,
+          "showPoints": "always",
+          "spanNulls": true,
+          "barAlignment": 0,
+          "axisSoftMin": null,
+          "gradientMode": "none",
+          "stacking": {
+           "mode": "none"
+          }
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "table",
+         "placement": "bottom",
+         "showLegend": true,
+         "calcs": [
+          "lastNotNull",
+          "min"
+         ]
+        },
+        "tooltip": {
+         "mode": "multi",
+         "sort": "desc"
+        }
+       }
+      },
+      {
+       "id": 7,
+       "type": "table",
+       "title": "Routes",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 16,
+        "y": 7,
+        "w": 8,
+        "h": 10
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "sum by (watch_id, route) (flightwatch_price)",
+         "instant": true,
+         "format": "table"
+        },
+        {
+         "refId": "B",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "sum by (watch_id, route) (flightwatch_lowest_price)",
+         "instant": true,
+         "format": "table"
+        },
+        {
+         "refId": "C",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "sum by (watch_id, route) (flightwatch_target_price)",
+         "instant": true,
+         "format": "table"
+        }
+       ],
+       "transformations": [
+        {
+         "id": "merge",
+         "options": {}
+        },
+        {
+         "id": "organize",
+         "options": {
+          "excludeByName": {
+           "Time": true,
+           "__name__": true,
+           "container": true,
+           "endpoint": true,
+           "instance": true,
+           "job": true,
+           "namespace": true,
+           "pod": true,
+           "service": true,
+           "currency": true,
+           "codes": true
+          },
+          "renameByName": {
+           "watch_id": "#",
+           "route": "Route",
+           "Value #A": "Now",
+           "Value #B": "Lowest",
+           "Value #C": "Target"
+          },
+          "indexByName": {
+           "watch_id": 0,
+           "route": 1,
+           "Value #A": 2,
+           "Value #B": 3,
+           "Value #C": 4
+          }
+         }
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "decimals": 0,
+         "custom": {
+          "align": "auto"
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "showHeader": true,
+        "sortBy": [
+         {
+          "displayName": "#",
+          "desc": false
+         }
+        ]
+       }
+      },
+      {
+       "id": 8,
+       "type": "row",
+       "title": "Service",
+       "collapsed": false,
+       "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+       },
+       "panels": []
+      },
+      {
+       "id": 9,
+       "type": "timeseries",
+       "title": "Price checks (per 3h)",
+       "description": "",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "interval": "3h",
+       "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 8,
+        "h": 8
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "legendFormat": "{{result}}",
+         "expr": "sum by (result) (increase(flightwatch_checks_total[3h]))"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "min": 0,
+         "color": {
+          "mode": "palette-classic"
+         },
+         "custom": {
+          "drawStyle": "bars",
+          "lineWidth": 2,
+          "fillOpacity": 80,
+          "pointSize": 8,
+          "showPoints": "auto",
+          "spanNulls": true,
+          "barAlignment": 0,
+          "axisSoftMin": 0,
+          "gradientMode": "none",
+          "stacking": {
+           "mode": "none"
+          }
+         }
+        },
+        "overrides": [
+         {
+          "matcher": {
+           "id": "byName",
+           "options": "ok"
+          },
+          "properties": [
+           {
+            "id": "color",
+            "value": {
+             "mode": "fixed",
+             "fixedColor": "#3987e5"
+            }
+           }
+          ]
+         },
+         {
+          "matcher": {
+           "id": "byName",
+           "options": "empty"
+          },
+          "properties": [
+           {
+            "id": "color",
+            "value": {
+             "mode": "fixed",
+             "fixedColor": "#c98500"
+            }
+           }
+          ]
+         },
+         {
+          "matcher": {
+           "id": "byName",
+           "options": "error"
+          },
+          "properties": [
+           {
+            "id": "color",
+            "value": {
+             "mode": "fixed",
+             "fixedColor": "#d95926"
+            }
+           }
+          ]
+         }
+        ]
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom",
+         "showLegend": true,
+         "calcs": []
+        },
+        "tooltip": {
+         "mode": "multi",
+         "sort": "desc"
+        }
+       }
+      },
+      {
+       "id": 10,
+       "type": "timeseries",
+       "title": "Chat commands (per 1h)",
+       "description": "",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "interval": "1h",
+       "gridPos": {
+        "x": 8,
+        "y": 18,
+        "w": 8,
+        "h": 8
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "legendFormat": "{{action}}",
+         "expr": "sum by (action) (increase(flightwatch_commands_total[1h]))"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "min": 0,
+         "color": {
+          "mode": "palette-classic"
+         },
+         "custom": {
+          "drawStyle": "bars",
+          "lineWidth": 2,
+          "fillOpacity": 80,
+          "pointSize": 8,
+          "showPoints": "auto",
+          "spanNulls": true,
+          "barAlignment": 0,
+          "axisSoftMin": 0,
+          "gradientMode": "none",
+          "stacking": {
+           "mode": "none"
+          }
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom",
+         "showLegend": true,
+         "calcs": []
+        },
+        "tooltip": {
+         "mode": "multi",
+         "sort": "desc"
+        }
+       }
+      },
+      {
+       "id": 11,
+       "type": "logs",
+       "title": "flight-watcher log",
+       "datasource": {
+        "type": "loki",
+        "uid": "loki"
+       },
+       "gridPos": {
+        "x": 16,
+        "y": 18,
+        "w": 8,
+        "h": 8
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "loki",
+          "uid": "loki"
+         },
+         "expr": "{namespace=\"travel\", container=\"app\"}"
+        }
+       ],
+       "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+       }
+      }
+     ],
+     "templating": {
+      "list": []
+     },
+     "annotations": {
+      "list": []
+     }
+    }
