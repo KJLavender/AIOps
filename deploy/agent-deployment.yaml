@@ -59,7 +59,7 @@ spec:
             - name: AIOPS_ALL_NAMESPACES
               value: "false"
             - name: AIOPS_NAMESPACES
-              value: "aiops-demo,travel"
+              value: "aiops-demo,travel,github"
             - name: AIOPS_POLL_INTERVAL
               value: "20"
             - name: AIOPS_STABILITY
