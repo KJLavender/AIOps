@@ -19,6 +19,14 @@ automatic rollback and a nightly evaluation suite.
 
 </div>
 
+> **🧩 The agent now runs as four agents: [AIOps v2](https://github.com/KJLavender/AIOps-v2).**
+> monitor, diagnose, repair and validate are separate pods with separate
+> ServiceAccounts and NetworkPolicies, handing work over through Kubernetes custom
+> resources — the agent that reads the web can't touch the cluster, and the one
+> that patches can't reach the web. This repository keeps the single-agent v1
+> (`deploy/agent-deployment.yaml`, scaled to 0) and the HomeLab around it:
+> monitoring, portal, services and the fault lab.
+
 ---
 
 ## Table of contents

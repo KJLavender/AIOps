@@ -7,7 +7,9 @@ metadata:
   labels:
     app: aiops-agent
 spec:
-  replicas: 1
+  # Superseded by the multi-agent AIOps v2 (github.com/KJLavender/AIOps-v2).
+  # Set back to 1 (and scale v2 down) to run this single-agent version again.
+  replicas: 0
   # One writer at a time on the RWO Knowledge Base volume.
   strategy:
     type: Recreate
