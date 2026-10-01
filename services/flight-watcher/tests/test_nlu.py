@@ -110,3 +110,16 @@ def test_rule_dates_override_llm_dates(monkeypatch):
         date_to="2027-01-01", stay_days=5, max_price=5000, parser="llm"))
     cmd = parse("高雄飛大阪 12月 來回5天 5000以下", TODAY, Config(ollama_endpoint="http://x"))
     assert (cmd.date_from, cmd.date_to) == ("2026-12-01", "2026-12-31")
+
+
+def test_year_aware_months():
+    assert _rules("2027/3月").date_from == "2027-03-01"
+    assert (_rules("2027年3月").date_from, _rules("2027年3月").date_to) == ("2027-03-01", "2027-03-31")
+    assert _rules("明年3月").date_from == "2027-03-01"
+    assert _rules("台北到東京 2027/3").date_from == "2027-03-01"
+    assert _rules("台北到首爾 2026-12-20~2026-12-28").date_from == "2026-12-20"  # ISO range still wins
+
+
+def test_next_year_without_month_is_vague():
+    assert _rules("明年的機票").vague_year is True
+    assert _rules("明年3月").vague_year is False

@@ -96,7 +96,11 @@ def make_handler(watcher: FlightWatcher):
                     return self._json(200, {"reply": f"🔄 正在查詢 #{watch.id} {watch.route}"})
                 watcher.store.update_watch(watch.id, active=False)
                 watcher.refresh_metrics()
-                return self._json(200, {"reply": f"🗑️ 已停止追蹤 #{watch.id} {watch.route}"})
+                reply = f"🗑️ 已停止追蹤 #{watch.id} {watch.route}（網頁按鈕）"
+                watcher.store.log_message("in", "web", f"按下「停止追蹤」#{watch.id}")
+                watcher.store.log_message("out", "bot", reply)
+                log.info("watch #%s removed via web button", watch.id)
+                return self._json(200, {"reply": reply})
             self._json(404, {"error": "not found"})
 
     return Handler
