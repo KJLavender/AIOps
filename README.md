@@ -190,6 +190,12 @@ Everything below runs on the same k3s node; see each folder for details.
   entry point: each tile links to a service and shows its pods' status plus a
   live widget (watched fares from the flight API, agent metrics from
   Prometheus, Grafana/Prometheus stats).
+- **`services/github-digest/`** — two pods from one image: `github-daily`
+  (09:00, Top 10 repos created in the last 24 h by stars, bait repos filtered)
+  and `repo-picks` (09:05, 5 never-before-recommended repos matching your
+  research topics, topics editable by typing). Pages at
+  `trending.` / `picks.` + `100-115-153-20.sslip.io:8000`, pushes to ntfy
+  topics `github-daily` / `repo-picks`, both lists on the portal.
 - **Phone access** — Tailscale runs inside WSL (node `homelab`, 100.115.153.20).
   Every Ingress also answers on `<name>.100-115-153-20.sslip.io` (public DNS
   that resolves to the Tailscale IP), so a phone on the same tailnet opens the
@@ -210,6 +216,7 @@ kubectl -n monitoring create secret generic grafana-admin `
   --from-literal=admin-user=admin --from-literal=admin-password=<password>
 kubectl apply -f monitoring/ ; kubectl apply -f monitoring/dashboards/
 kubectl apply -f services/flight-watcher/k8s/
+kubectl apply -f services/github-digest/k8s/
 kubectl apply -f deploy/
 kubectl apply -f portal/
 kubectl apply -f cluster/

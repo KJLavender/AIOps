@@ -441,6 +441,8 @@ pytest -q
 | http://flights.localhost:8000 | 機票追蹤網頁 |
 | http://ntfy.localhost:8000/flights | ntfy 通知 + 聊天頻道 |
 | http://localhost:30080 | 代理自己的即時儀表板 |
+| http://trending.localhost:8000 | GitHub 今日新星 Top 10（手機：`trending.100-115-153-20.sslip.io:8000`） |
+| http://picks.localhost:8000 | 每日研究推薦（手機：`picks.100-115-153-20.sslip.io:8000`） |
 
 ### 15.1 監控（`monitoring/`）
 
@@ -460,6 +462,14 @@ pytest -q
 - 只在**新低價（比之前最低再低 3%）**或**跌破目標價**時通知，透過 ntfy 推播。
 - 打字控制（網頁或 ntfy `flights` 頻道）：Ollama 解析自由文字，規則解析器當備援；規則抓到的日期/價格/天數優先（LLM 曾把「12月」解成到 2027-01-01）。
 - `travel` namespace 也在 AIOps 代理監看範圍內。詳見 `services/flight-watcher/README.md`。
+
+### 15.2.1 GitHub 每日摘要（`services/github-digest/`）
+
+- 同一個映像跑成兩個 Pod（`github` namespace）：`github-daily` 每天 09:00 抓過去 24 小時新建立、星數前 10 的 repo；`repo-picks` 每天 09:05 依研究主題推薦 5 個沒推薦過的 repo。
+- 新 repo 的星數榜常混進買星的惡意誘餌（遊戲外掛、破解、「免費下載」），用關鍵字和「沒有程式語言」過濾。
+- 一句話中文介紹由 Ollama 產生；沒有描述的 repo 直接標「作者沒有寫描述」，避免 LLM 從名字亂猜。
+- 研究主題可打字管理（網頁或 ntfy `repo-picks` 頻道）：「新增主題 eBPF」「主題」「刪除主題 #2」「立即推薦」。
+- 推播到 ntfy 的 `github-daily`、`repo-picks` 頻道；兩份清單都在 Homepage 入口網站上。AIOps 代理也監看 `github` namespace。
 
 ### 15.3 入口網站（`portal/homepage.yaml`）
 
