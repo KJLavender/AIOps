@@ -1,0 +1,123 @@
+# Self-hosted ntfy: push notifications to phone/desktop, and the chat channel
+# for flight-watcher commands (type into the "flights" topic).
+# Web app: http://ntfy.localhost:8000/flights
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ntfy-cache
+  namespace: travel
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy
+  namespace: travel
+  labels:
+    app: ntfy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ntfy
+  template:
+    metadata:
+      labels:
+        app: ntfy
+    spec:
+      # Service links would inject NTFY_PORT=tcp://... and ntfy reads NTFY_* as config.
+      enableServiceLinks: false
+      containers:
+        - name: ntfy
+          image: binwiederhier/ntfy:v2.28.0
+          args: ["serve"]
+          env:
+            - name: NTFY_BASE_URL
+              value: "http://ntfy.localhost:8000"
+            - name: NTFY_LISTEN_HTTP
+              value: ":80"
+            - name: NTFY_CACHE_FILE
+              value: "/var/cache/ntfy/cache.db"
+            - name: NTFY_CACHE_DURATION
+              value: "168h"
+            - name: NTFY_BEHIND_PROXY
+              value: "true"
+            - name: NTFY_ENABLE_METRICS
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 30
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/ntfy
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: ntfy-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntfy
+  namespace: travel
+  labels:
+    app: ntfy
+spec:
+  selector:
+    app: ntfy
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ntfy
+  namespace: travel
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: ntfy.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ntfy
+                port:
+                  name: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ntfy
+  namespace: travel
+spec:
+  selector:
+    matchLabels:
+      app: ntfy
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 60s

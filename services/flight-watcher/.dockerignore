@@ -1,0 +1,6 @@
+tests/
+**/__pycache__/
+*.pyc
+k8s/
+*.md
+data/
