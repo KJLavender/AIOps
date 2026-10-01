@@ -99,6 +99,13 @@ spec:
           root_url: http://grafana.100-115-153-20.sslip.io:8000
         date_formats:
           default_timezone: Asia/Taipei
+        # Read-only without logging in: Grafana is only reachable from this
+        # PC (localhost) and the owner's Tailscale devices. Editing still
+        # needs the admin login (grafana-admin Secret).
+        auth.anonymous:
+          enabled: true
+          org_name: Main Org.
+          org_role: Viewer
       sidecar:
         resources:
           requests: {cpu: 10m, memory: 64Mi}
