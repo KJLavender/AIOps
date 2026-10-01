@@ -40,6 +40,10 @@ class Collector:
                 issues.append(issue)
         return issues
 
+    def _past_grace(self, meta: dict[str, Any]) -> bool:
+        """New pods are briefly Pending/ContainerCreating; don't flag them yet."""
+        return _older_than(meta.get("creationTimestamp"), self.config.pending_grace_seconds)
+
     def analyze(self, pod: dict[str, Any]) -> Optional[PodIssue]:
         meta = pod.get("metadata", {})
         status = pod.get("status", {})
@@ -73,6 +77,8 @@ class Collector:
 
             waiting = cs.get("state", {}).get("waiting", {})
             reason = waiting.get("reason", "")
+            if reason == "ContainerCreating" and not self._past_grace(meta):
+                continue  # every new pod passes through this briefly
             if reason in _WAITING_SYMPTOMS:
                 return PodIssue(
                     namespace, name, cname, Symptom.from_reason(reason),
@@ -107,7 +113,7 @@ class Collector:
                     cs.get("restartCount", 0), pod,
                 )
 
-        if phase == "Pending":
+        if phase == "Pending" and self._past_grace(meta):
             return PodIssue(
                 namespace, name, None, Symptom.PENDING,
                 _pending_message(status), phase, 0, pod,
@@ -118,6 +124,10 @@ class Collector:
                 status.get("message", "Pod failed"), phase, 0, pod,
             )
         return None
+
+
+def _older_than(timestamp: Optional[str], seconds: int) -> bool:
+    return not timestamp or _age_seconds(timestamp) >= seconds  # unknown age: treat as old
 
 
 def _age_seconds(timestamp: str) -> float:

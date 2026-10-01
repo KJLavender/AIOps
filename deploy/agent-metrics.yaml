@@ -1,0 +1,29 @@
+# Prometheus scrapes the agent's /metrics (served by the dashboard on host port 30080).
+apiVersion: v1
+kind: Service
+metadata:
+  name: aiops-agent-metrics
+  namespace: aiops-demo
+  labels:
+    app: aiops-agent
+spec:
+  selector:
+    app: aiops-agent
+  ports:
+    - name: http
+      port: 30080
+      targetPort: 30080
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: aiops-agent
+  namespace: aiops-demo
+spec:
+  selector:
+    matchLabels:
+      app: aiops-agent
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

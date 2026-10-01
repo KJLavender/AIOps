@@ -62,6 +62,13 @@ class JsonlKnowledgeBase(KnowledgeBase):
             return best
         return None
 
+    def find_for_target(self, symptom: str, target_name: str) -> Optional[KBEntry]:
+        for entry in reversed(self._load()):
+            if (entry.verified and entry.patch and entry.symptom == symptom
+                    and entry.target_name == target_name):
+                return entry
+        return None
+
     def add(self, entry: KBEntry) -> None:
         with open(self.path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry.to_dict(), ensure_ascii=False) + "\n")

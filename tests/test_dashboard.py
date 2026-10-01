@@ -84,3 +84,12 @@ def test_http_endpoints_serve_page_and_state():
             assert len(json.loads(resp.read())["pods"]) == 4
     finally:
         dash.stop()
+
+
+def test_metrics_endpoint_counts_events():
+    agent = _demo_agent()
+    agent.tick()
+    text = Dashboard(agent, "127.0.0.1", 0).metrics()
+    assert 'aiops_events_total{stage="detected",source="",namespace="aiops-demo"}' in text
+    assert "aiops_kb_entries " in text
+    assert "aiops_scan_ok 1" in text

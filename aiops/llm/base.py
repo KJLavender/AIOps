@@ -18,6 +18,8 @@ class LLMInput:
     describe: str = ""
     deployment_yaml: str = ""
     container_spec: str = ""
+    web_results: str = ""  # untrusted: search hits for the error
+    allowed_actions: tuple[str, ...] = ()  # catalog the model may pick from
 
 
 class LLMAnalyzer(ABC):

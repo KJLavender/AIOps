@@ -16,6 +16,7 @@ from .pipeline import Pipeline
 from .remediation import Remediator
 from .rules import RuleEngine
 from .validation import Validator
+from .websearch import WebSearch
 
 log = logging.getLogger("aiops.app")
 
@@ -37,6 +38,7 @@ def build_pipeline(
         validator=Validator(kube, config),
         learning=LearningEngine(kb, config),
         events=events,
+        websearch=WebSearch(config),
     )
     return collector, pipeline
 

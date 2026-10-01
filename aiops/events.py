@@ -40,6 +40,8 @@ class EventLog:
     def __init__(self, maxlen: int = 500) -> None:
         self._events: deque[Event] = deque(maxlen=maxlen)
         self._lock = threading.Lock()
+        # Monotonic per-(stage, source, namespace) totals for Prometheus.
+        self._counts: dict[tuple[str, str, str], int] = {}
 
     def emit(
         self,
@@ -63,6 +65,12 @@ class EventLog:
             event.symptom = issue.symptom.value
         with self._lock:
             self._events.append(event)
+            key = (stage, source, event.namespace)
+            self._counts[key] = self._counts.get(key, 0) + 1
+
+    def counts(self) -> dict[tuple[str, str, str], int]:
+        with self._lock:
+            return dict(self._counts)
 
     def recent(self, limit: int = 200) -> list[dict[str, Any]]:
         """Newest first."""

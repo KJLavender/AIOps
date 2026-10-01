@@ -20,12 +20,14 @@ class KubeClient:
         self.config = config
 
     # --- low level ---------------------------------------------------------
-    def run(self, args: list[str], check: bool = False) -> tuple[int, str, str]:
+    def run(
+        self, args: list[str], check: bool = False, timeout: int = 120
+    ) -> tuple[int, str, str]:
         cmd = [self.config.kubectl_bin, *args]
         log.debug("exec: %s", " ".join(cmd))
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120
+                cmd, capture_output=True, text=True, timeout=timeout
             )
         except FileNotFoundError as exc:
             raise KubectlError(
@@ -139,6 +141,9 @@ class KubeClient:
             args += ["--dry-run=server"]
         return self.run(args)
 
+    def rollout_undo(self, namespace: str, deployment: str) -> tuple[int, str, str]:
+        return self.run(["rollout", "undo", f"deployment/{deployment}", "-n", namespace])
+
     def rollout_status(
         self, namespace: str, deployment: str, timeout_seconds: int
     ) -> tuple[int, str, str]:
@@ -150,7 +155,10 @@ class KubeClient:
                 "-n",
                 namespace,
                 f"--timeout={timeout_seconds}s",
-            ]
+            ],
+            # Leave kubectl room to report its own timeout; killing it first
+            # raised TimeoutExpired and skipped the rollback path.
+            timeout=timeout_seconds + 30,
         )
 
 

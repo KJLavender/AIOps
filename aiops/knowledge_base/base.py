@@ -20,3 +20,7 @@ class KnowledgeBase(ABC):
     @abstractmethod
     def add(self, entry: KBEntry) -> None:
         """Persist a verified entry."""
+
+    def find_for_target(self, symptom: str, target_name: str) -> Optional[KBEntry]:
+        """Latest verified, patch-carrying entry for this exact workload + symptom."""
+        return None

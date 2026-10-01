@@ -59,6 +59,10 @@ class FakeKubeClient:
         self.healed.add(name)
         return 0, f"deployment.apps/{name} patched (fake)", ""
 
+    def rollout_undo(self, namespace, deployment):
+        self.healed.discard(deployment)
+        return 0, f"deployment.apps/{deployment} rolled back (fake)", ""
+
     def rollout_status(self, namespace, deployment, timeout_seconds):
         return 0, f"deployment \"{deployment}\" successfully rolled out", ""
 

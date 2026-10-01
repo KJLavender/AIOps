@@ -93,6 +93,11 @@ class Diagnosis:
     # so a vague LLM answer never overrides a precise rule diagnosis.
     consult_llm: bool = True
 
+    # LLM suggestion from the bounded catalog (actions.py); the pipeline
+    # validates it and only then turns it into `patch`.
+    proposed_action: Optional[str] = None
+    action_params: dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class RemediationResult:

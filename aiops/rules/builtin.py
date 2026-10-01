@@ -291,8 +291,10 @@ class NotReadyRule(Rule):
     name = "not-ready"
 
     def diagnose(self, issue: PodIssue, ctx: RuleContext) -> Optional[Diagnosis]:
-        probe = re.search(r"Readiness probe failed:[^\n]*", ctx.events)
-        detail = probe.group(0).strip() if probe else "readiness probe not passing"
+        # Events are oldest-first; the latest failure is the current one (the
+        # first is often a "connection refused" from while the app was starting).
+        probes = re.findall(r"Readiness probe failed:[^\n]*", ctx.events)
+        detail = probes[-1].strip() if probes else "readiness probe not passing"
         return Diagnosis(
             source=DiagnosisSource.RULE,
             symptom=self.symptom,
