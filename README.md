@@ -172,6 +172,7 @@ Everything below runs on the same k3s node; see each folder for details.
 | URL (from Windows) | What |
 | --- | --- |
 | **http://localhost:8000** | **Homepage portal — everything below on one page** (live fares, agent stats, pod status) |
+| **http://home.100-115-153-20.sslip.io:8000** | the same portal **from a phone** on Tailscale (see below) |
 | http://grafana.localhost:8000 | Grafana — stock Kubernetes dashboards + **AIOps Agent** + **Flight Deals** |
 | http://flights.localhost:8000 | Flight watcher web UI (type commands in plain Chinese) |
 | http://ntfy.localhost:8000/flights | ntfy — push notifications + the same chat channel |
@@ -189,6 +190,15 @@ Everything below runs on the same k3s node; see each folder for details.
   entry point: each tile links to a service and shows its pods' status plus a
   live widget (watched fares from the flight API, agent metrics from
   Prometheus, Grafana/Prometheus stats).
+- **Phone access** — Tailscale runs inside WSL (node `homelab`, 100.115.153.20).
+  Every Ingress also answers on `<name>.100-115-153-20.sslip.io` (public DNS
+  that resolves to the Tailscale IP), so a phone on the same tailnet opens the
+  portal and every service; add the portal to the home screen for an app-like
+  icon. The PC can't reach its own WSL Tailscale address, so the portal's
+  `custom.js` rewrites links to `*.localhost` when opened locally.
+- **Resource isolation** — `cluster/resource-policies.yaml`: every container has
+  requests/limits, LimitRange defaults per namespace, and PriorityClasses
+  (platform > services > fault cases).
 - **`services/flight-watcher/`** — checks Google Flights every 3 h for each
   watched route and notifies via ntfy on a new low or when a target price is
   hit. Change what it watches by typing, e.g. `台北到東京`,
@@ -202,6 +212,7 @@ kubectl apply -f monitoring/ ; kubectl apply -f monitoring/dashboards/
 kubectl apply -f services/flight-watcher/k8s/
 kubectl apply -f deploy/
 kubectl apply -f portal/
+kubectl apply -f cluster/
 ```
 
 ## Tests

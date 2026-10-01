@@ -1,0 +1,21 @@
+# The agent's own dashboard behind Traefik, so the phone (via Tailscale) can open it.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aiops-agent
+  namespace: aiops-demo
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: agent.100-115-153-20.sslip.io
+      http: &paths
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aiops-agent-metrics
+                port:
+                  name: http
+    - host: agent.localhost
+      http: *paths

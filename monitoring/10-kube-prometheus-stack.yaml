@@ -92,10 +92,11 @@ spec:
       ingress:
         enabled: true
         ingressClassName: traefik
-        hosts: ["grafana.localhost"]
+        # *.localhost for this PC; *.100-115-153-20.sslip.io = the Tailscale IP, for the phone.
+        hosts: ["grafana.localhost", "grafana.100-115-153-20.sslip.io"]
       grafana.ini:
         server:
-          root_url: http://grafana.localhost:8000
+          root_url: http://grafana.100-115-153-20.sslip.io:8000
         date_formats:
           default_timezone: Asia/Taipei
       sidecar:
