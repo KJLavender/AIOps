@@ -1,0 +1,245 @@
+# Two daily GitHub digests from one image, one pod each:
+#   github-daily  - repos created in the last 24h with the most stars (Top 10)
+#   repo-picks    - research-matched recommendations (topics editable by chat)
+# Pages: http://trending.100-115-153-20.sslip.io:8000 and
+#        http://picks.100-115-153-20.sslip.io:8000   (*.localhost on this PC)
+# Pushes go to the shared ntfy in the travel namespace (topics github-daily,
+# repo-picks); typing into the repo-picks topic edits the research topics.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: github
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-defaults
+  namespace: github
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 10m, memory: 32Mi}
+      default: {cpu: 300m, memory: 192Mi}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: github-daily-data
+  namespace: github
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: repo-picks-data
+  namespace: github
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-daily
+  namespace: github
+  labels:
+    app: github-daily
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # single SQLite writer
+  selector:
+    matchLabels:
+      app: github-daily
+  template:
+    metadata:
+      labels:
+        app: github-daily
+    spec:
+      enableServiceLinks: false
+      priorityClassName: homelab-service
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: app
+          image: github-digest:local
+          imagePullPolicy: Never
+          env:
+            - name: MODE
+              value: daily-top
+            - name: RUN_AT
+              value: "09:00"
+            - name: TOP_N
+              value: "10"
+            - name: NTFY_URL
+              value: "http://ntfy.travel.svc.cluster.local"
+            - name: NTFY_TOPIC
+              value: github-daily
+            - name: PUBLIC_URL
+              value: "http://trending.100-115-153-20.sslip.io:8000"
+            - name: OLLAMA_ENDPOINT
+              value: "http://ollama.aiops-demo.svc.cluster.local:11434"
+            - name: OLLAMA_MODEL
+              value: "qwen2.5:7b"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 10m, memory: 48Mi}
+            limits: {cpu: 300m, memory: 192Mi}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: github-daily-data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repo-picks
+  namespace: github
+  labels:
+    app: repo-picks
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: repo-picks
+  template:
+    metadata:
+      labels:
+        app: repo-picks
+    spec:
+      enableServiceLinks: false
+      priorityClassName: homelab-service
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: app
+          image: github-digest:local
+          imagePullPolicy: Never
+          env:
+            - name: MODE
+              value: research-picks
+            - name: RUN_AT
+              value: "09:05"
+            - name: PICKS_N
+              value: "5"
+            - name: NTFY_URL
+              value: "http://ntfy.travel.svc.cluster.local"
+            - name: NTFY_TOPIC
+              value: repo-picks
+            - name: PUBLIC_URL
+              value: "http://picks.100-115-153-20.sslip.io:8000"
+            - name: OLLAMA_ENDPOINT
+              value: "http://ollama.aiops-demo.svc.cluster.local:11434"
+            - name: OLLAMA_MODEL
+              value: "qwen2.5:7b"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 10m, memory: 48Mi}
+            limits: {cpu: 300m, memory: 192Mi}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: repo-picks-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-daily
+  namespace: github
+  labels:
+    app: github-daily
+    digest: "true"
+spec:
+  selector:
+    app: github-daily
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: repo-picks
+  namespace: github
+  labels:
+    app: repo-picks
+    digest: "true"
+spec:
+  selector:
+    app: repo-picks
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: github-digest
+  namespace: github
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: trending.100-115-153-20.sslip.io
+      http: &daily
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: github-daily
+                port: {name: http}
+    - host: trending.localhost
+      http: *daily
+    - host: picks.100-115-153-20.sslip.io
+      http: &picks
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: repo-picks
+                port: {name: http}
+    - host: picks.localhost
+      http: *picks
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: github-digest
+  namespace: github
+spec:
+  selector:
+    matchLabels:
+      digest: "true"
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 60s

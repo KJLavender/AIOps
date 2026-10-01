@@ -70,6 +70,7 @@ data:
     # phone. "style: row" with fixed columns overflowed narrow screens.
     layout:
       機票優惠:
+      GitHub 每日:
       AIOps 自我修復:
       監控:
   services.yaml: |
@@ -98,6 +99,42 @@ data:
             namespace: travel
             app: ntfy
             podSelector: app=ntfy
+    - GitHub 每日:
+        - 今日新星 Top 10:
+            icon: github.png
+            href: http://trending.100-115-153-20.sslip.io:8000
+            description: 過去 24 小時新建立、星數最高的 repo（每天 09:00）
+            namespace: github
+            app: github-daily
+            podSelector: app=github-daily
+            widget:
+              type: customapi
+              url: http://github-daily.github.svc.cluster.local:8080/api/state
+              refreshInterval: 300000
+              display: dynamic-list
+              mappings:
+                items: items
+                name: rank_name
+                label: stars_text
+                limit: 10
+                target: "{url}"
+        - 研究推薦:
+            icon: mdi-compass-outline
+            href: http://picks.100-115-153-20.sslip.io:8000
+            description: 依你的研究主題每天推薦 5 個（可打字改主題）
+            namespace: github
+            app: repo-picks
+            podSelector: app=repo-picks
+            widget:
+              type: customapi
+              url: http://repo-picks.github.svc.cluster.local:8080/api/state
+              refreshInterval: 300000
+              display: dynamic-list
+              mappings:
+                items: items
+                name: rank_name
+                label: stars_text
+                target: "{url}"
     - AIOps 自我修復:
         - AIOps Agent:
             icon: mdi-robot-outline
@@ -218,7 +255,7 @@ spec:
         app: homepage
       annotations:
         # Bump to roll the pod after editing the ConfigMap.
-        config-revision: "6"
+        config-revision: "7"
     spec:
       serviceAccountName: homepage
       automountServiceAccountToken: true
