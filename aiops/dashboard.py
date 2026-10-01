@@ -22,7 +22,8 @@ if TYPE_CHECKING:
 log = logging.getLogger("aiops.dashboard")
 
 _POD_CACHE_SECONDS = 2.0
-_ZERO_STAGES = ("remediated", "validated", "validation_failed", "rolled_back", "learned")
+_ZERO_STAGES = ("remediated", "validated", "validation_failed", "rolled_back", "learned",
+                "judge_passed", "judge_rejected")
 _SOFT_SYMPTOMS = {Symptom.PENDING, Symptom.CONTAINER_CREATING}
 
 
@@ -154,6 +155,7 @@ class Dashboard:
                 for source in ("rule", "kb", "llm"):
                     counts.setdefault((stage, source, namespace), 0)
             counts.setdefault(("detected", "", namespace), 0)
+            counts.setdefault(("guard_blocked", "web", namespace), 0)
         for (stage, source, namespace), count in sorted(counts.items()):
             lines.append(
                 f'aiops_events_total{{stage="{stage}",source="{source}",namespace="{namespace}"}} {count}'

@@ -32,7 +32,8 @@ def _ask(prompt: str, config: Config) -> str:
         "model": config.ollama_model,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0.2, "num_predict": 120},
+        # Same num_ctx as the AIOps agent: Ollama reloads the model when it changes.
+        "options": {"temperature": 0.2, "num_predict": 120, "num_ctx": 8192},
     }).encode("utf-8")
     req = urllib.request.Request(config.ollama_endpoint.rstrip("/") + "/api/generate",
                                  data=payload, headers={"Content-Type": "application/json"})
