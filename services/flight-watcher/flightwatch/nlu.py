@@ -35,6 +35,7 @@ class Command:
     watch_id: Optional[int] = None
     nonstop: bool = False
     parser: str = "rules"
+    vague_year: bool = False  # "明年" without a month: ask which month
 
 
 # --- rule parser ----------------------------------------------------------
@@ -55,7 +56,9 @@ _STAY_RES = [
 ]
 _RANGE_MD_RE = re.compile(r"(\d{1,2})/(\d{1,2})\s*[-~到至]\s*(\d{1,2})/(\d{1,2})")
 _RANGE_ISO_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\s*[-~到至]\s*(\d{4}-\d{2}-\d{2})")
-_MONTH_RE = re.compile(r"(\d{1,2})\s*月")
+_MONTH_RE = re.compile(r"(?:(\d{4})\s*[/年.-]\s*|(明年)\s*)?(\d{1,2})\s*月")
+_YEAR_MONTH_RE = re.compile(r"(\d{4})\s*[/.-]\s*(\d{1,2})(?![\d/.-])")
+_NEXT_YEAR_RE = re.compile(r"明年")
 _IATA_RE = re.compile(r"\b[A-Z]{3}\b")
 
 
@@ -98,12 +101,24 @@ def _parse_dates(text: str, today: date) -> tuple[Optional[str], Optional[str]]:
             end = date(start.year + 1, end.month, end.day)
         return start.isoformat(), end.isoformat()
     m = _MONTH_RE.search(text)
-    if m and 1 <= int(m.group(1)) <= 12:
-        month = int(m.group(1))
-        year = today.year if month >= today.month else today.year + 1
-        last = calendar.monthrange(year, month)[1]
-        return date(year, month, 1).isoformat(), date(year, month, last).isoformat()
+    if m and 1 <= int(m.group(3)) <= 12:
+        month = int(m.group(3))
+        if m.group(1):
+            year = int(m.group(1))
+        elif m.group(2):
+            year = today.year + 1
+        else:
+            year = today.year if month >= today.month else today.year + 1
+        return _month_window(year, month)
+    m = _YEAR_MONTH_RE.search(text)
+    if m and 1 <= int(m.group(2)) <= 12:
+        return _month_window(int(m.group(1)), int(m.group(2)))
     return None, None
+
+
+def _month_window(year: int, month: int) -> tuple[str, str]:
+    last = calendar.monthrange(year, month)[1]
+    return date(year, month, 1).isoformat(), date(year, month, last).isoformat()
 
 
 def rule_parse(text: str, today: date, default_origin: str) -> Command:
@@ -124,6 +139,7 @@ def rule_parse(text: str, today: date, default_origin: str) -> Command:
             cmd.stay_days = int(m.group(1))
             break
     cmd.date_from, cmd.date_to = _parse_dates(text, today)
+    cmd.vague_year = bool(_NEXT_YEAR_RE.search(text)) and cmd.date_from is None
     cmd.nonstop = bool(_NONSTOP_RE.search(text))
     places = _find_places(text)
     if len(places) >= 2:

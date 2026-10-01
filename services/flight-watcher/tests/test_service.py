@@ -166,3 +166,38 @@ def test_state_has_dashboard_summary():
     assert state(w)["watches"][0]["summary"] == "查詢中…"
     _drain(w)
     assert state(w)["watches"][0]["summary"] == "NT$3,640 · 10/31"
+
+
+def test_dates_only_follow_up_continues_last_route():
+    w = _watcher([3640, 4100])
+    w.handle_text("台北到東京", "ntfy")
+    reply = w.handle_text("明年的機票", "ntfy")
+    assert "明年幾月" in reply and "台北→東京" in reply
+    reply = w.handle_text("2027/3月", "web")
+    assert "已新增追蹤 #2 台北→東京" in reply
+    assert w.store.get_watch(2).date_from == "2027-03-01"
+
+
+def test_too_far_ahead_is_refused():
+    w = _watcher()
+    assert "太遠了" in w.handle_text("台北到東京 2028/3月", "web")
+
+
+def test_web_remove_button_leaves_a_trail():
+    import json
+    import threading
+    import urllib.request
+
+    from flightwatch.web import serve
+
+    w = _watcher()
+    w.handle_text("台北到東京", "web")
+    server = serve(w, 0)
+    port = server.server_address[1]
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/watches/1/remove", data=b"{}",
+                                 headers={"Content-Type": "application/json"})
+    reply = json.loads(urllib.request.urlopen(req, timeout=5).read().decode("utf-8"))["reply"]
+    server.shutdown()
+    assert "網頁按鈕" in reply
+    texts = [m["text"] for m in w.store.recent_messages()]
+    assert any("停止追蹤" in t and "#1" in t for t in texts)

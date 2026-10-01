@@ -5,7 +5,7 @@ import logging
 import queue
 import threading
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -41,6 +41,9 @@ class FlightWatcher:
         self._queue: "queue.Queue[tuple[int, str]]" = queue.Queue()
         self._stop = threading.Event()
         self.last_cycle_at: Optional[float] = None
+        # Route of the last watch the conversation touched, so a follow-up
+        # like "2027/3月" knows which route it is about.
+        self.last_watch_id: Optional[int] = None
         # Counters start at 0 so Prometheus' increase() sees the first event.
         for result in ("ok", "empty", "error"):
             METRICS.inc("flightwatch_checks_total", 0, result=result)
@@ -181,6 +184,10 @@ class FlightWatcher:
         return reply
 
     def execute(self, cmd: Command) -> str:
+        if cmd.action in ("unknown", "add", "check") and not cmd.destination:
+            follow_up = self._follow_up(cmd)
+            if follow_up:
+                return follow_up
         if cmd.action == "help":
             return HELP_TEXT.format(interval=self.config.check_interval_minutes // 60 or 1)
         if cmd.action == "list":
@@ -206,6 +213,18 @@ class FlightWatcher:
             return f"🎯 已把 {', '.join('#' + str(w.id) for w in targets)} 的目標價設為 NT${cmd.max_price:,.0f}"
         return "我看不太懂 🙏 " + HELP_TEXT.format(interval=self.config.check_interval_minutes // 60 or 1)
 
+    def _follow_up(self, cmd: Command) -> Optional[str]:
+        """Dates without a route continue the last route mentioned."""
+        last = self.store.get_watch(self.last_watch_id) if self.last_watch_id else None
+        if cmd.vague_year:
+            route = f"{last.route}" if last else "哪條航線"
+            return f"明年幾月呢？例如「2027/3月」「明年3月」，我會幫你找{route}那個月的機票。"
+        if not cmd.date_from or not last:
+            return None
+        cmd.action = "add"
+        cmd.origin, cmd.destination = last.origin_name, last.dest_name
+        return None
+
     def _targets(self, cmd: Command) -> list[Watch]:
         if cmd.watch_id is not None:
             w = self.store.get_watch(cmd.watch_id)
@@ -222,6 +241,8 @@ class FlightWatcher:
         dest = airports.resolve(cmd.destination or "")
         if not origin or not dest:
             return f"找不到機場：{cmd.origin or ''} → {cmd.destination or ''}。可以用中文城市名或 IATA 代碼（例如 NRT）。"
+        if cmd.date_from and date.fromisoformat(cmd.date_from) > self.today() + timedelta(days=330):
+            return f"{cmd.date_from[:7]} 太遠了，航空公司大約只開放 11 個月內的票，晚一點再來找我。"
         o_codes, d_codes = airports.supported_codes(origin[1]), airports.supported_codes(dest[1])
         if not o_codes or not d_codes:
             return f"目前的航班資料來源不支援 {origin[0]} → {dest[0]} 的機場代碼。"
@@ -237,6 +258,7 @@ class FlightWatcher:
                 if cmd.max_price is not None:
                     self.store.update_watch(w.id, max_price=cmd.max_price)
                 self.request_check(w.id, "manual")
+                self.last_watch_id = w.id
                 return f"👌 #{w.id} {w.route} 已經在追蹤了，馬上幫你重新查一次。"
 
         watch = self.store.add_watch(
@@ -245,6 +267,7 @@ class FlightWatcher:
             max_price=cmd.max_price, nonstop=cmd.nonstop,
         )
         self.request_check(watch.id, "added")
+        self.last_watch_id = watch.id
         self.refresh_metrics()
         parts = [f"✅ 已新增追蹤 #{watch.id} {watch.route}（{watch.codes_label}）",
                  f"日期：{watch.describe_window()}"]
