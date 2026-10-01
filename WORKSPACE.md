@@ -232,6 +232,20 @@ LearningEngine.record (寫入 KB，verified=true，帶 target_name)
 3. **套用條件**：`AIOPS_LLM_AUTO_FIX=true`、confidence ≥ `AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE`（0.7）、動作符合症狀、參數通過檢查、這個修法之前沒失敗過。patch 由動作依照當下的 Deployment 產生，LLM 從頭到尾不寫 patch，所以網頁內容就算想誘導「換成某個 image」也沒有對應動作可用。
 4. **驗證失敗 → `kubectl rollout undo`**，並記住不再重試；成功則學進 KB，下次同一個 workload 出同樣問題直接用 KB 修，不必再搜尋。
 
+### 決策品質閉環（套用 future-agi 的方法）
+
+future-agi 是 LLM 應用的評估 / 監控平台，核心是「模擬 → 評估 → 防護 → 監控 → 優化」的閉環。整套平台（Postgres + ClickHouse + Redis + Temporal、nightly 版）太重，所以只把方法實作進代理（仍然零外部依賴）：
+
+| 步驟 | 實作 |
+| --- | --- |
+| 防護 `guard.py` | 搜尋結果送 LLM 前掃描 prompt injection，可疑的 `Title:` 區塊整段剔除，事件 `guard_blocked` |
+| 評估 `judge.py` | 先做證據檢查（改 probe 路徑必須有 probe 失敗事件…），再由第二次 LLM 呼叫只看叢集證據評 grounded / fits / safe，全部 ≥ 0.7 才套用；事件 `judge_passed` / `judge_rejected` |
+| 監控 | 每個 LLM 參與的問題寫一行 JSON `decision` 紀錄（搜尋、擋下、LLM 回答、裁判分數、pre-check、結果）→ Loki；Grafana「LLM decision quality」區 |
+| 模擬 `simulate.py` + `scenarios.json` | 7 個凍結的故障情境（含下毒的搜尋結果、誤導建議、錯 port、慢啟動），用假叢集跑真的決策流程；CronJob `aiops-eval` 每晚 03:30，摘要推到 ntfy `aiops` 頻道 |
+| 優化 | 每個 prompt 版本計分，`AIOPS_PROMPT_VARIANT` 選最佳（目前 default 7/7、evidence-first 6/7，不安全修改都是 0） |
+
+觀察：7B 模型當裁判偏寬鬆（曾給自編的 `/healthz` 滿分），最後是 pre-check 擋下；多層防護不能省。另外 Ollama 只要 `num_ctx` 不同就會重新載入模型，所以三個服務統一用 8192。
+
 實測（case6，nginx 的 readiness probe 打 `/healthz` 回 404）：搜尋 → LLM 選 `set_readiness_probe_path` `/index.html` → 套用 → Running & Ready → 學習；再弄壞一次時直接 `KB exact hit` 修好。
 
 ---

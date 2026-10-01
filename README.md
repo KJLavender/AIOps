@@ -68,6 +68,22 @@ error (cluster IPs and pod hashes stripped), hands the results to the LLM as
 | `Pending` | `lower_requests` | may only lower existing requests |
 | `OOMKilled` | `set_memory_limit` | must raise the limit, capped by `AIOPS_MAX_MEMORY` |
 
+### Decision quality loop (after [future-agi](https://github.com/future-agi/future-agi))
+
+Every LLM-assisted fix runs through future-agi's *protect → evaluate → monitor*
+steps, and a nightly job does *simulate → optimize*:
+
+| Step | Here |
+| --- | --- |
+| **Protect** (`aiops/guard.py`) | search results are scanned for prompt injection (instruction overrides, role hijacks, agent directives, `curl \| sh`, `privileged`); a flagged result block is dropped before the LLM sees it |
+| **Evaluate** (`aiops/judge.py`) | deterministic evidence check (a probe-path change needs a probe failure in the events, a memory raise an OOM kill, ...) then a second LLM call grades grounded / fits / safe against the **cluster evidence only**; every score must reach `AIOPS_JUDGE_MIN_SCORE` |
+| **Monitor** | one JSON `decision` log line per LLM-assisted issue (query, guard flags, LLM answer, judge scores, pre-check, outcome) in Loki; Grafana "LLM decision quality" row |
+| **Simulate** (`aiops/simulate.py`, `aiops/scenarios.json`) | 7 frozen failures, incl. a poisoned search result, misleading advice, a wrong-port probe and a slow app, replayed through the real path against a fake cluster; CronJob `aiops-eval` nightly 03:30, summary to ntfy topic `aiops` |
+| **Optimize** | each prompt variant is scored; `AIOPS_PROMPT_VARIANT` picks the winner (currently `default`: 7/7, `evidence-first`: 6/7, 0 unsafe for both) |
+
+The 7B judge is the weakest layer (it approved an invented path once); the
+pod-level pre-check is what caught it, which is why the layers stack.
+
 The LLM never writes a patch; the action builds it from the live Deployment.
 Anything else it suggests (new image, privileged sidecar, ...) has no action to
 map onto and stays a recommendation. LLM confidence must reach

@@ -76,6 +76,12 @@ class Config:
     max_memory_limit: str = "2Gi"  # cap for LLM-proposed memory raises
     rollback_on_failure: bool = True  # `rollout undo` when validation fails
     action_precheck: bool = True  # probe a proposed readiness path on the pod first
+    # Evaluate: a second LLM call grades each proposed fix against the cluster
+    # evidence; every score must reach judge_min_score.
+    judge_enabled: bool = True
+    judge_min_score: float = 0.7
+    judge_model: str = ""  # empty = same model as the analyzer
+    prompt_variant: str = "default"  # Optimize: chosen by the simulation suite
 
     # --- Web search (Exa MCP, same backend as the agent-reach skill) ---
     web_search_enabled: bool = False
@@ -123,6 +129,10 @@ class Config:
             max_memory_limit=os.getenv("AIOPS_MAX_MEMORY", "2Gi"),
             rollback_on_failure=_env_bool("AIOPS_ROLLBACK", True),
             action_precheck=_env_bool("AIOPS_ACTION_PRECHECK", True),
+            judge_enabled=_env_bool("AIOPS_JUDGE", True),
+            judge_min_score=_env_float("AIOPS_JUDGE_MIN_SCORE", 0.7),
+            judge_model=os.getenv("AIOPS_JUDGE_MODEL", ""),
+            prompt_variant=os.getenv("AIOPS_PROMPT_VARIANT", "default"),
             web_search_enabled=_env_bool("AIOPS_WEB_SEARCH", False),
             exa_endpoint=os.getenv("AIOPS_EXA_ENDPOINT", "https://mcp.exa.ai/mcp"),
             web_search_results=_env_int("AIOPS_WEB_SEARCH_RESULTS", 3),

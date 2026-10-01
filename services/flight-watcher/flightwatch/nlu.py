@@ -189,7 +189,8 @@ def llm_parse(text: str, today: date, config: Config) -> Optional[Command]:
         "prompt": _PROMPT.format(today=today.isoformat(), text=text),
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0},
+        # Same num_ctx as the AIOps agent: Ollama reloads the model when it changes.
+        "options": {"temperature": 0, "num_ctx": 8192},
     }).encode("utf-8")
     req = urllib.request.Request(
         config.ollama_endpoint.rstrip("/") + "/api/generate",
