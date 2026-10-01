@@ -186,3 +186,13 @@ def test_pending_rule_explains_insufficient_memory():
 def test_pending_rule_declines_unknown_reason():
     issue = PodIssue("ns", "p", None, Symptom.PENDING, "Pod pending")
     assert RuleEngine().diagnose(issue, _ctx(_FakeKube(None))) is None
+
+
+def test_not_ready_rule_reports_latest_probe_failure():
+    events = (
+        "10m Warning Unhealthy pod/x Readiness probe failed: dial tcp: connect: connection refused\n"
+        "5s Warning Unhealthy pod/x Readiness probe failed: HTTP probe failed with statuscode: 404\n"
+    )
+    issue = PodIssue("aiops-demo", "case6", "app", Symptom.NOT_READY)
+    diag = RuleEngine().diagnose(issue, _ctx(_FakeKube(None), events=events))
+    assert "statuscode: 404" in diag.root_cause

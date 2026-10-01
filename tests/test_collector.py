@@ -129,3 +129,23 @@ def test_detects_not_ready_after_grace_period():
 
 def test_ignores_not_ready_while_starting():
     assert _analyze(_running_not_ready(10)) == []
+
+
+def _pending(age_seconds, waiting=None):
+    created = datetime.now(timezone.utc) - timedelta(seconds=age_seconds)
+    statuses = [{"name": "app", "restartCount": 0, "state": {"waiting": waiting}}] if waiting else []
+    return {
+        "metadata": {"namespace": "aiops-demo", "name": "new-abc",
+                     "creationTimestamp": created.strftime("%Y-%m-%dT%H:%M:%SZ")},
+        "status": {"phase": "Pending", "containerStatuses": statuses},
+    }
+
+
+def test_new_pod_briefly_pending_is_not_an_issue():
+    assert _analyze(_pending(5)) == []
+    assert _analyze(_pending(5, {"reason": "ContainerCreating"})) == []
+
+
+def test_pod_pending_past_grace_is_an_issue():
+    assert _analyze(_pending(300))[0].symptom == Symptom.PENDING
+    assert _analyze(_pending(300, {"reason": "ContainerCreating"}))[0].symptom == Symptom.CONTAINER_CREATING

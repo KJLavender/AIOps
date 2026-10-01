@@ -57,3 +57,12 @@ class Remediator:
             attempted=True, success=False, detail=(err or out).strip(),
             patch=diagnosis.patch,
         )
+
+    def rollback(self, diagnosis: Diagnosis) -> RemediationResult:
+        """Undo our patch (previous ReplicaSet template) after a failed validation."""
+        if self.config.dry_run or not (diagnosis.target_name and diagnosis.target_namespace):
+            return RemediationResult(attempted=False, success=False, detail="nothing to roll back")
+        rc, out, err = self.kube.rollout_undo(diagnosis.target_namespace, diagnosis.target_name)
+        detail = (out if rc == 0 else err or out).strip()
+        log.info("rollback %s/%s: %s", diagnosis.target_namespace, diagnosis.target_name, detail)
+        return RemediationResult(attempted=True, success=rc == 0, detail=detail)

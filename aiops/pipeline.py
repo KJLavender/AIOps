@@ -5,13 +5,16 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Optional
 
+from . import actions
 from .collector import Collector
 from .config import Config
 from .events import EventLog
-from .kube import KubeClient
+from .kube import KubeClient, container_from_deployment
 from .knowledge_base import KnowledgeBase
 from .learning import LearningEngine
 from .llm import LLMAnalyzer, LLMInput
@@ -20,6 +23,7 @@ from .remediation import Remediator
 from .rules import RuleEngine
 from .rules.base import RuleContext
 from .validation import Validator
+from .websearch import WebSearch, generalize
 
 log = logging.getLogger("aiops.pipeline")
 
@@ -36,6 +40,7 @@ class Pipeline:
         validator: Validator,
         learning: LearningEngine,
         events: Optional[EventLog] = None,
+        websearch: Optional[WebSearch] = None,
     ) -> None:
         self.kube = kube
         self.config = config
@@ -46,6 +51,9 @@ class Pipeline:
         self.validator = validator
         self.learning = learning
         self.events = events if events is not None else EventLog()
+        self.websearch = websearch if websearch is not None else WebSearch(config)
+        # Fixes that failed validation (and were rolled back): never retried.
+        self._failed_fixes: set[tuple[str, str, str]] = set()
 
     def handle(self, issue: PodIssue) -> None:
         log.info("handling issue %s: %s", issue.key, issue.message.strip()[:120])
@@ -112,6 +120,14 @@ class Pipeline:
             self.events.emit(
                 "validation_failed", validation.detail, issue, level="error", source=source
             )
+            self._failed_fixes.add(_fix_key(diagnosis))
+            if self.config.rollback_on_failure:
+                undo = self.remediator.rollback(diagnosis)
+                if undo.attempted:
+                    self.events.emit(
+                        "rolled_back" if undo.success else "rollback_failed", undo.detail,
+                        issue, level="warn" if undo.success else "error", source=source,
+                    )
 
     # --- helpers -----------------------------------------------------------
     def _build_context(self, issue: PodIssue) -> RuleContext:
@@ -130,6 +146,13 @@ class Pipeline:
     def _search_kb_or_llm(
         self, issue: PodIssue, ctx: RuleContext, allow_llm: bool = True
     ) -> Optional[Diagnosis]:
+        # Same workload, same symptom, a fix that was verified before: reuse it
+        # (keyword scoring drowns in log tokens, so check this first).
+        dep_name, _ = ctx.owner_deployment(issue)
+        exact = self.kb.find_for_target(issue.symptom.value, dep_name) if dep_name else None
+        if exact is not None:
+            log.info("KB exact hit for %s (workload %s)", issue.key, dep_name)
+            return self._diagnosis_from_kb(issue, exact)
         query_text = f"{ctx.logs}\n{ctx.events}"
         hit = self.kb.search(issue, query_text)
         if hit is not None:
@@ -138,15 +161,78 @@ class Pipeline:
         if not (self.config.llm_enabled and allow_llm):
             return None
 
-        _, dep_obj = ctx.owner_deployment(issue)
+        dep_name, dep_obj = ctx.owner_deployment(issue)
+        web_results = ""
+        if self.config.web_search_enabled:
+            query = self._search_query(issue, ctx)
+            web_results = self.websearch.search(query)
+            self.events.emit(
+                "web_search",
+                f"{query} -> {'found results' if web_results else 'no results'}",
+                issue, source="web",
+            )
         data = LLMInput(
             logs=ctx.logs,
             previous_logs=ctx.previous_logs,
             events=ctx.events,
             describe=ctx.describe,
-            deployment_yaml=str(dep_obj) if dep_obj else "",
+            deployment_yaml=json.dumps(dep_obj.get("spec", {}), ensure_ascii=False) if dep_obj else "",
+            web_results=web_results,
+            allowed_actions=actions.allowed_for(issue.symptom) if self.config.llm_auto_fix else (),
         )
-        return self.llm.analyze(issue, data)
+        diagnosis = self.llm.analyze(issue, data)
+        if diagnosis is not None and diagnosis.proposed_action:
+            self._promote_action(issue, diagnosis, dep_name, dep_obj, bool(web_results))
+        return diagnosis
+
+    def _search_query(self, issue: PodIssue, ctx: RuleContext) -> str:
+        """Symptom + the most specific error line we have, minus cluster noise."""
+        detail = ""
+        for source in (ctx.events, ctx.previous_logs, ctx.logs):
+            lines = [l for l in (source or "").splitlines() if l.strip()]
+            hits = [l for l in lines if re.search(r"fail|error|exception|refused|denied", l, re.I)]
+            if hits:
+                detail = hits[-1]
+                break
+        if not detail:
+            detail = issue.message
+        # Events lines start with "LAST SEEN TYPE REASON OBJECT": keep the message.
+        detail = re.sub(r"^\S+\s+(Warning|Normal)\s+\S+\s+\S+\s+", "", detail.strip())
+        return generalize(f"kubernetes {issue.symptom.value} {detail}")[:200]
+
+    def _promote_action(self, issue: PodIssue, diagnosis: Diagnosis,
+                        dep_name: Optional[str], dep_obj, used_web: bool) -> None:
+        """Turn an LLM-named catalog action into an auto-fix, if every guard passes."""
+        name = diagnosis.proposed_action
+        if not self.config.llm_auto_fix:
+            return
+        if diagnosis.confidence < self.config.llm_auto_fix_min_confidence:
+            diagnosis.summary += f" (action {name} not applied: confidence {diagnosis.confidence:.2f})"
+            return
+        try:
+            plan = actions.build_plan(name, diagnosis.action_params, issue.symptom,
+                                      dep_obj, issue.container, self.config)
+        except actions.UnsafeAction as exc:
+            log.info("rejected LLM action for %s: %s", issue.key, exc)
+            self.events.emit("action_rejected", f"{name}: {exc}", issue, level="warn", source="llm")
+            return
+        reason = self._precheck(issue, plan, dep_obj)
+        if reason:
+            log.info("pre-check rejected %s for %s: %s", name, issue.key, reason)
+            self.events.emit("action_rejected", f"{name}: {reason}", issue, level="warn", source="llm")
+            return
+        diagnosis.patch = plan.patch
+        diagnosis.target_kind = "deployment"
+        diagnosis.target_name = dep_name
+        diagnosis.target_namespace = issue.namespace
+        if _fix_key(diagnosis) in self._failed_fixes:
+            self.events.emit("action_rejected", f"{name}: failed before, not retrying",
+                             issue, level="warn", source="llm")
+            diagnosis.patch = None
+            return
+        diagnosis.auto_fixable = True
+        via = "web search + LLM" if used_web else "LLM"
+        diagnosis.summary = f"{plan.summary} ({via}: {diagnosis.summary})"
 
     def _diagnosis_from_kb(self, issue: PodIssue, entry: KBEntry) -> Diagnosis:
         dep_name, _ = self.kube.get_owner_deployment(issue.namespace, issue.pod)
@@ -154,6 +240,7 @@ class Pipeline:
         # other Deployments: only auto-apply where the entry was verified.
         same_target = entry.target_name is None or entry.target_name == dep_name
         auto_fixable = bool(entry.patch and dep_name and same_target)
+        patch = _refresh_restart_stamp(entry.patch)
         return Diagnosis(
             source=DiagnosisSource.KB,
             symptom=issue.symptom,
@@ -161,12 +248,45 @@ class Pipeline:
             summary=entry.solution,
             actions=[entry.solution],
             confidence=entry.confidence,
-            patch=entry.patch,
+            patch=patch,
             target_kind=entry.target_kind or "deployment",
             target_name=dep_name,
             target_namespace=issue.namespace,
             auto_fixable=auto_fixable,
         )
+
+    def _precheck(self, issue: PodIssue, plan: "actions.ActionPlan", dep_obj) -> Optional[str]:
+        """Verify an LLM guess against the live pod; returns a rejection reason or None."""
+        if plan.action != "set_readiness_probe_path" or not self.config.action_precheck:
+            return None
+        pod_ip = (issue.raw or {}).get("status", {}).get("podIP")
+        container = container_from_deployment(dep_obj, issue.container) or {}
+        probe = (container.get("readinessProbe") or {}).get("httpGet") or {}
+        port = probe.get("port")
+        if isinstance(port, str):  # named port -> number
+            port = next((p.get("containerPort") for p in container.get("ports", [])
+                         if p.get("name") == port), None)
+        path = plan.patch["spec"]["template"]["spec"]["containers"][0]["readinessProbe"]["httpGet"]["path"]
+        if not (pod_ip and port):
+            return "cannot reach the pod to verify the new path"
+        scheme = (probe.get("scheme") or "HTTP").lower()
+        status = self.http_status(f"{scheme}://{pod_ip}:{port}{path}")
+        if status is None or status >= 400:
+            return f"new path {path} answered {status or 'nothing'} on the pod"
+        return None
+
+    @staticmethod
+    def http_status(url: str) -> Optional[int]:
+        import urllib.error
+        import urllib.request
+
+        try:
+            with urllib.request.urlopen(url, timeout=3) as resp:
+                return resp.status
+        except urllib.error.HTTPError as exc:
+            return exc.code
+        except OSError:
+            return None
 
     def _report(self, issue: PodIssue, diagnosis: Diagnosis) -> None:
         log.info(
@@ -177,3 +297,25 @@ class Pipeline:
             diagnosis.confidence,
             ", ".join(diagnosis.actions),
         )
+
+
+def _fix_key(diagnosis: Diagnosis) -> tuple[str, str, str]:
+    """Identity of a fix attempt; catalog actions by name+params (restart patches carry a timestamp)."""
+    target = f"{diagnosis.target_namespace}/{diagnosis.target_name}"
+    if diagnosis.proposed_action:
+        return (target, diagnosis.proposed_action, json.dumps(diagnosis.action_params, sort_keys=True))
+    return (target, "patch", json.dumps(diagnosis.patch, sort_keys=True))
+
+
+def _refresh_restart_stamp(patch):
+    """A learned rollout_restart replays its old timestamp (a no-op); stamp it fresh."""
+    annotations = (((patch or {}).get("spec") or {}).get("template") or {}).get("metadata", {}).get("annotations")
+    if not annotations or "kubectl.kubernetes.io/restartedAt" not in annotations:
+        return patch
+    import copy
+    from datetime import datetime, timezone
+
+    fresh = copy.deepcopy(patch)
+    fresh["spec"]["template"]["metadata"]["annotations"]["kubectl.kubernetes.io/restartedAt"] = (
+        datetime.now(timezone.utc).isoformat())
+    return fresh

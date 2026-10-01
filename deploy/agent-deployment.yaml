@@ -55,7 +55,7 @@ spec:
             - name: AIOPS_ALL_NAMESPACES
               value: "false"
             - name: AIOPS_NAMESPACES
-              value: "aiops-demo"
+              value: "aiops-demo,travel"
             - name: AIOPS_POLL_INTERVAL
               value: "20"
             - name: AIOPS_STABILITY
@@ -82,6 +82,13 @@ spec:
               value: "120"
             - name: AIOPS_LLM_MIN_CONFIDENCE
               value: "0.6"
+            # Unknown failures: search the web (Exa, same backend as the
+            # agent-reach skill), let the LLM pick a fix from the bounded
+            # catalog in aiops/actions.py; failed fixes are rolled back.
+            - name: AIOPS_WEB_SEARCH
+              value: "true"
+            - name: AIOPS_LLM_AUTO_FIX
+              value: "true"
           volumeMounts:
             - name: kb
               mountPath: /kb

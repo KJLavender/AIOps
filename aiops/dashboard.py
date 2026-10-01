@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("aiops.dashboard")
 
 _POD_CACHE_SECONDS = 2.0
+_ZERO_STAGES = ("remediated", "validated", "validation_failed", "rolled_back", "learned")
 _SOFT_SYMPTOMS = {Symptom.PENDING, Symptom.CONTAINER_CREATING}
 
 
@@ -138,6 +139,40 @@ class Dashboard:
             },
         }
 
+    def metrics(self) -> str:
+        """Prometheus text format: agent activity counters + KB size + scan health."""
+        lines = [
+            "# HELP aiops_events_total Agent pipeline events by stage, source and namespace",
+            "# TYPE aiops_events_total counter",
+        ]
+        counts = self.agent.events.counts()
+        # Publish key series at 0 before they first happen: Prometheus'
+        # increase() can't see a counter that is born at 1.
+        cfg = self.agent.config
+        for namespace in ([] if cfg.all_namespaces else cfg.namespaces):
+            for stage in _ZERO_STAGES:
+                for source in ("rule", "kb", "llm"):
+                    counts.setdefault((stage, source, namespace), 0)
+            counts.setdefault(("detected", "", namespace), 0)
+        for (stage, source, namespace), count in sorted(counts.items()):
+            lines.append(
+                f'aiops_events_total{{stage="{stage}",source="{source}",namespace="{namespace}"}} {count}'
+            )
+        kb = self.agent.pipeline.kb
+        kb_entries = kb.entries() if hasattr(kb, "entries") else []
+        lines += [
+            "# HELP aiops_kb_entries Verified fixes stored in the knowledge base",
+            "# TYPE aiops_kb_entries gauge",
+            f"aiops_kb_entries {len(kb_entries)}",
+            "# HELP aiops_last_scan_timestamp_seconds Unix time of the last successful scan",
+            "# TYPE aiops_last_scan_timestamp_seconds gauge",
+            f"aiops_last_scan_timestamp_seconds {self.agent.last_scan_at or 0}",
+            "# HELP aiops_scan_ok 1 if the last scan succeeded",
+            "# TYPE aiops_scan_ok gauge",
+            f"aiops_scan_ok {0 if self.agent.last_scan_error else 1}",
+        ]
+        return "\n".join(lines) + "\n"
+
     # --- server ------------------------------------------------------------
     def start(self) -> None:
         dashboard = self
@@ -152,6 +187,9 @@ class Dashboard:
                     self._send(200, "application/json; charset=utf-8", body)
                 elif path == "/healthz":
                     self._send(200, "text/plain; charset=utf-8", b"ok")
+                elif path == "/metrics":
+                    body = dashboard.metrics().encode("utf-8")
+                    self._send(200, "text/plain; version=0.0.4; charset=utf-8", body)
                 else:
                     self._send(404, "text/plain; charset=utf-8", b"not found")
 

@@ -51,6 +51,7 @@ class Config:
     image_fallbacks: dict[str, str] = field(default_factory=dict)  # repo -> image
     env_defaults: dict[str, str] = field(default_factory=dict)  # VAR -> value
     not_ready_grace_seconds: int = 120  # Running but NotReady this long = issue
+    pending_grace_seconds: int = 60  # Pending / ContainerCreating this long = issue
 
     # --- Validation ---
     validation_timeout_seconds: int = 300  # 5 minutes, per spec
@@ -67,7 +68,21 @@ class Config:
     ollama_endpoint: str = "http://localhost:11434"
     ollama_model: str = "llama3"
     llm_timeout_seconds: int = 60
+    llm_num_ctx: int = 8192  # tokens; prompts with logs + web results run ~5k
     llm_min_confidence: float = 0.6  # drop LLM answers below this
+    # Let the LLM pick a fix from the bounded catalog in actions.py.
+    llm_auto_fix: bool = False
+    llm_auto_fix_min_confidence: float = 0.7
+    max_memory_limit: str = "2Gi"  # cap for LLM-proposed memory raises
+    rollback_on_failure: bool = True  # `rollout undo` when validation fails
+    action_precheck: bool = True  # probe a proposed readiness path on the pod first
+
+    # --- Web search (Exa MCP, same backend as the agent-reach skill) ---
+    web_search_enabled: bool = False
+    exa_endpoint: str = "https://mcp.exa.ai/mcp"
+    web_search_results: int = 3
+    web_search_max_chars: int = 4000
+    web_search_timeout_seconds: int = 30
     log_tail_lines: int = 200
 
     # --- Dashboard ---
@@ -90,6 +105,7 @@ class Config:
             image_fallbacks=_env_map("AIOPS_IMAGE_FALLBACKS"),
             env_defaults=_env_map("AIOPS_ENV_DEFAULTS"),
             not_ready_grace_seconds=_env_int("AIOPS_NOT_READY_GRACE", 120),
+            pending_grace_seconds=_env_int("AIOPS_PENDING_GRACE", 60),
             validation_timeout_seconds=_env_int("AIOPS_VALIDATION_TIMEOUT", 300),
             validation_poll_seconds=_env_int("AIOPS_VALIDATION_POLL", 15),
             validation_stability_seconds=_env_int("AIOPS_STABILITY", 60),
@@ -100,7 +116,18 @@ class Config:
             ollama_endpoint=os.getenv("AIOPS_OLLAMA_ENDPOINT", "http://localhost:11434"),
             ollama_model=os.getenv("AIOPS_OLLAMA_MODEL", "llama3"),
             llm_timeout_seconds=_env_int("AIOPS_LLM_TIMEOUT", 60),
+            llm_num_ctx=_env_int("AIOPS_LLM_NUM_CTX", 8192),
             llm_min_confidence=_env_float("AIOPS_LLM_MIN_CONFIDENCE", 0.6),
+            llm_auto_fix=_env_bool("AIOPS_LLM_AUTO_FIX", False),
+            llm_auto_fix_min_confidence=_env_float("AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE", 0.7),
+            max_memory_limit=os.getenv("AIOPS_MAX_MEMORY", "2Gi"),
+            rollback_on_failure=_env_bool("AIOPS_ROLLBACK", True),
+            action_precheck=_env_bool("AIOPS_ACTION_PRECHECK", True),
+            web_search_enabled=_env_bool("AIOPS_WEB_SEARCH", False),
+            exa_endpoint=os.getenv("AIOPS_EXA_ENDPOINT", "https://mcp.exa.ai/mcp"),
+            web_search_results=_env_int("AIOPS_WEB_SEARCH_RESULTS", 3),
+            web_search_max_chars=_env_int("AIOPS_WEB_SEARCH_MAX_CHARS", 4000),
+            web_search_timeout_seconds=_env_int("AIOPS_WEB_SEARCH_TIMEOUT", 30),
             log_tail_lines=_env_int("AIOPS_LOG_TAIL", 200),
             dashboard_host=os.getenv("AIOPS_DASHBOARD_HOST", "127.0.0.1"),
             dashboard_port=_env_int("AIOPS_DASHBOARD_PORT", 8080),
