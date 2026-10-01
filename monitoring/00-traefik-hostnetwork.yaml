@@ -10,6 +10,9 @@ metadata:
 spec:
   valuesContent: |-
     hostNetwork: true
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {cpu: 500m, memory: 256Mi}
     ports:
       traefik:
         port: 9000   # default 8080 is too common on a dev box

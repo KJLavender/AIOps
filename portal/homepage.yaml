@@ -217,6 +217,7 @@ spec:
       serviceAccountName: homepage
       automountServiceAccountToken: true
       enableServiceLinks: false
+      priorityClassName: homelab-service
       containers:
         - name: homepage
           image: ghcr.io/gethomepage/homepage:v2.4.0
@@ -258,7 +259,7 @@ spec:
             periodSeconds: 15
           resources:
             requests: {cpu: 20m, memory: 96Mi}
-            limits: {memory: 384Mi}
+            limits: {cpu: 500m, memory: 384Mi}
           volumeMounts:
             - {name: config, mountPath: /app/config/custom.js, subPath: custom.js}
             - {name: config, mountPath: /app/config/custom.css, subPath: custom.css}

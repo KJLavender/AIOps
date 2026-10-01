@@ -16,10 +16,15 @@ spec:
     controller:
       type: deployment
       replicas: 1
+      priorityClassName: homelab-platform
+    configReloader:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
     alloy:
       resources:
         requests: {cpu: 50m, memory: 128Mi}
-        limits: {memory: 512Mi}
+        limits: {cpu: 500m, memory: 512Mi}
       configMap:
         content: |
           discovery.kubernetes "pods" {

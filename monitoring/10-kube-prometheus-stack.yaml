@@ -39,8 +39,27 @@ spec:
       # the only thing lost.
       hostRootFsMount:
         enabled: false
+      priorityClassName: homelab-platform
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 200m, memory: 64Mi}
+    kube-state-metrics:
+      priorityClassName: homelab-platform
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+    prometheusOperator:
+      priorityClassName: homelab-platform
+      resources:
+        requests: {cpu: 20m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 256Mi}
+      prometheusConfigReloader:
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 100m, memory: 64Mi}
     prometheus:
       prometheusSpec:
+        priorityClassName: homelab-platform
         retention: 7d
         # Pick up ServiceMonitors from every namespace, not just this release.
         serviceMonitorSelectorNilUsesHelmValues: false
@@ -48,7 +67,7 @@ spec:
         ruleSelectorNilUsesHelmValues: false
         resources:
           requests: {cpu: 100m, memory: 512Mi}
-          limits: {memory: 2Gi}
+          limits: {cpu: "1", memory: 2Gi}
         storageSpec:
           volumeClaimTemplate:
             spec:
@@ -58,6 +77,10 @@ spec:
                 requests:
                   storage: 10Gi
     grafana:
+      priorityClassName: homelab-platform
+      resources:
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {cpu: 500m, memory: 768Mi}
       admin:
         existingSecret: grafana-admin
         userKey: admin-user
@@ -76,6 +99,9 @@ spec:
         date_formats:
           default_timezone: Asia/Taipei
       sidecar:
+        resources:
+          requests: {cpu: 10m, memory: 64Mi}
+          limits: {cpu: 100m, memory: 192Mi}
         datasources:
           alertmanager:
             enabled: false   # Alertmanager itself is disabled above
