@@ -24,6 +24,9 @@ from .rules import RuleEngine
 from .rules.base import RuleContext
 from .validation import Validator
 from .websearch import WebSearch, generalize
+from . import guard
+from .judge import Judge
+import time
 
 log = logging.getLogger("aiops.pipeline")
 
@@ -52,10 +55,23 @@ class Pipeline:
         self.learning = learning
         self.events = events if events is not None else EventLog()
         self.websearch = websearch if websearch is not None else WebSearch(config)
+        self.judge = Judge(config)
+        # Decision record for the issue being handled (Monitor): filled by the
+        # helpers, written as one JSON log line when handling ends.
+        self._trace: dict = {}
         # Fixes that failed validation (and were rolled back): never retried.
         self._failed_fixes: set[tuple[str, str, str]] = set()
 
     def handle(self, issue: PodIssue) -> None:
+        self._trace = {}
+        try:
+            self._handle(issue)
+        finally:
+            if "llm" in self._trace:
+                self._trace.update(issue=issue.key, symptom=issue.symptom.value)
+                log.info("decision %s", json.dumps(self._trace, ensure_ascii=False, default=str))
+
+    def _handle(self, issue: PodIssue) -> None:
         log.info("handling issue %s: %s", issue.key, issue.message.strip()[:120])
         self.events.emit("detected", issue.message.strip()[:200], issue, level="warn")
         ctx = self._build_context(issue)
@@ -86,11 +102,13 @@ class Pipeline:
         )
 
         if not (diagnosis.auto_fixable and diagnosis.patch):
+            self._trace["outcome"] = "recommended"
             log.info("[recommendation only] %s -> %s", issue.key, diagnosis.summary)
             self.events.emit("recommended", diagnosis.summary, issue, level="warn", source=source)
             return
 
         if not self.config.auto_fix:
+            self._trace["outcome"] = "auto_fix_disabled"
             log.info("auto_fix disabled; skipping remediation for %s", issue.key)
             self.events.emit(
                 "recommended", f"auto-fix disabled: {diagnosis.summary}", issue,
@@ -100,6 +118,7 @@ class Pipeline:
 
         remediation = self.remediator.remediate(diagnosis)
         if not remediation.success:
+            self._trace["outcome"] = "remediation_failed"
             log.error("remediation failed for %s: %s", issue.key, remediation.detail)
             self.events.emit(
                 "remediation_failed", remediation.detail, issue, level="error", source=source
@@ -111,11 +130,13 @@ class Pipeline:
 
         validation = self.validator.validate(diagnosis)
         if validation.success:
+            self._trace["outcome"] = "validated"
             self.learning.record(issue, diagnosis, remediation, validation)
             log.info("RESOLVED %s (%s)", issue.key, validation.detail)
             self.events.emit("validated", validation.detail, issue, level="ok", source=source)
             self.events.emit("learned", "verified fix stored in KB", issue, level="ok", source=source)
         else:
+            self._trace["outcome"] = "validation_failed"
             log.error("validation failed for %s: %s", issue.key, validation.detail)
             self.events.emit(
                 "validation_failed", validation.detail, issue, level="error", source=source
@@ -171,6 +192,13 @@ class Pipeline:
                 f"{query} -> {'found results' if web_results else 'no results'}",
                 issue, source="web",
             )
+            screened = guard.scan(web_results)
+            if screened.flags:
+                self.events.emit("guard_blocked", "; ".join(screened.flags)[:300], issue,
+                                 level="warn", source="web")
+            web_results = screened.text
+            self._trace.update(web_query=query, web_chars=len(web_results),
+                               guard_flags=screened.flags)
         data = LLMInput(
             logs=ctx.logs,
             previous_logs=ctx.previous_logs,
@@ -180,9 +208,15 @@ class Pipeline:
             web_results=web_results,
             allowed_actions=actions.allowed_for(issue.symptom) if self.config.llm_auto_fix else (),
         )
+        started = time.time()
         diagnosis = self.llm.analyze(issue, data)
+        self._trace["llm"] = None if diagnosis is None else {
+            "root_cause": diagnosis.root_cause, "action": diagnosis.proposed_action,
+            "params": diagnosis.action_params, "confidence": diagnosis.confidence,
+            "seconds": round(time.time() - started, 1),
+        }
         if diagnosis is not None and diagnosis.proposed_action:
-            self._promote_action(issue, diagnosis, dep_name, dep_obj, bool(web_results))
+            self._promote_action(issue, diagnosis, dep_name, dep_obj, bool(web_results), ctx)
         return diagnosis
 
     def _search_query(self, issue: PodIssue, ctx: RuleContext) -> str:
@@ -201,7 +235,8 @@ class Pipeline:
         return generalize(f"kubernetes {issue.symptom.value} {detail}")[:200]
 
     def _promote_action(self, issue: PodIssue, diagnosis: Diagnosis,
-                        dep_name: Optional[str], dep_obj, used_web: bool) -> None:
+                        dep_name: Optional[str], dep_obj, used_web: bool,
+                        ctx: Optional[RuleContext] = None) -> None:
         """Turn an LLM-named catalog action into an auto-fix, if every guard passes."""
         name = diagnosis.proposed_action
         if not self.config.llm_auto_fix:
@@ -216,7 +251,22 @@ class Pipeline:
             log.info("rejected LLM action for %s: %s", issue.key, exc)
             self.events.emit("action_rejected", f"{name}: {exc}", issue, level="warn", source="llm")
             return
+        if self.config.judge_enabled:
+            container = container_from_deployment(dep_obj, issue.container) or {}
+            verdict = self.judge.review(
+                issue, diagnosis, plan.summary,
+                events=ctx.events if ctx else "", logs=(ctx.previous_logs or ctx.logs) if ctx else "",
+                spec=json.dumps(container, ensure_ascii=False))
+            self._trace["judge"] = verdict.to_dict()
+            if not verdict.passed:
+                log.info("judge rejected %s for %s: %s %s", name, issue.key, verdict.scores, verdict.reason)
+                self.events.emit("judge_rejected", f"{name}: {verdict.reason} {verdict.scores}"[:300],
+                                 issue, level="warn", source="llm")
+                diagnosis.patch = None
+                return
+            self.events.emit("judge_passed", f"{name}: {verdict.scores}", issue, source="llm")
         reason = self._precheck(issue, plan, dep_obj)
+        self._trace["precheck"] = reason or "ok"
         if reason:
             log.info("pre-check rejected %s for %s: %s", name, issue.key, reason)
             self.events.emit("action_rejected", f"{name}: {reason}", issue, level="warn", source="llm")

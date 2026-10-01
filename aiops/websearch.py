@@ -18,12 +18,16 @@ log = logging.getLogger("aiops.websearch")
 
 _IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b")
 _HASH_RE = re.compile(r"\b[a-z0-9]+(?:-[a-z0-9]{5,10}){1,2}\b")  # pod-name suffixes
+_UUID_RE = re.compile(r"\(?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)?")
+_POD_REF_RE = re.compile(r"\s+in pod \S+")  # "... container app in pod web-x_ns(uid)"
 _SPACE_RE = re.compile(r"\s+")
 
 
 def generalize(text: str) -> str:
-    """Strip cluster-specific noise (IPs, pod hashes) so the query matches public posts."""
-    text = _IP_RE.sub("", text or "")
+    """Strip cluster-specific noise (pod refs, UIDs, IPs, pod hashes) so the query matches public posts."""
+    text = _POD_REF_RE.sub("", text or "")
+    text = _UUID_RE.sub("", text)
+    text = _IP_RE.sub("", text)
     text = _HASH_RE.sub("", text)
     return _SPACE_RE.sub(" ", text).strip()
 

@@ -123,6 +123,20 @@ aiops = dashboard("aiops-agent", "AIOps Agent", [
     logs(11, "Agent log", '{namespace="aiops-demo", container="agent"}', grid(0, 15, 14, 12)),
     logs(12, "Kubernetes warning events", f'{{job="kubernetes-events", namespace=~"{NS}"}} |= "type=Warning"',
          grid(14, 15, 10, 12)),
+    # Evaluate / Protect / Monitor / Simulate (after future-agi's feedback loop).
+    row(13, "LLM decision quality", 27),
+    stat(14, "Judge approved (7d)", 'sum(increase(aiops_events_total{stage="judge_passed"}[7d])) or vector(0)',
+         grid(0, 28, 4, 4), desc="LLM-proposed fixes the second LLM (judge) approved"),
+    stat(15, "Judge rejected (7d)", 'sum(increase(aiops_events_total{stage="judge_rejected"}[7d])) or vector(0)',
+         grid(4, 28, 4, 4), steps=[{"color": "text", "value": None}, {"color": WARNING, "value": 1}],
+         desc="Proposals not grounded in the cluster evidence, or not fitting the root cause"),
+    stat(16, "Poisoned results blocked (7d)", 'sum(increase(aiops_events_total{stage="guard_blocked"}[7d])) or vector(0)',
+         grid(8, 28, 4, 4), steps=[{"color": "text", "value": None}, {"color": WARNING, "value": 1}],
+         desc="Search results dropped by the prompt-injection guard before reaching the LLM"),
+    logs(17, "Nightly simulation (aiops-eval)", '{namespace="aiops-demo", container="eval"} |= "sim_summary"',
+         grid(12, 28, 12, 4)),
+    logs(18, "LLM decision records", '{namespace="aiops-demo", container="agent"} |= "decision "',
+         grid(0, 32, 24, 10)),
 ], ["aiops", "kubernetes"])
 
 # --- Flight Deals ----------------------------------------------------------
