@@ -32,6 +32,9 @@ def state(watcher: FlightWatcher) -> dict:
             "last_error": w.last_error,
             "lowest": watcher.store.lowest_price(w.id),
             "latest": latest.__dict__ if latest else None,
+            # One readable line for dashboards (e.g. the Homepage portal).
+            "summary": (f"{watcher._money(latest.price, latest.currency)} · {latest.travel_date[5:].replace('-', '/')}"
+                        if latest else "查詢中…"),
             "history": [{"t": p.checked_at, "price": p.price, "date": p.travel_date} for p in history],
         })
     return {

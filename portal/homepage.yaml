@@ -1,0 +1,312 @@
+# Homepage (gethomepage.dev): one portal for everything on the cluster.
+# http://localhost:8000 (or http://home.localhost:8000)
+#
+# Lives in the monitoring namespace so the Grafana widget can read the
+# grafana-admin Secret. Each service tile shows its pods' status/CPU/memory
+# (kubernetes integration) plus a live widget.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homepage
+  namespace: monitoring
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: homepage
+  namespace: monitoring
+  annotations:
+    kubernetes.io/service-account.name: homepage
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homepage
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homepage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage
+  namespace: monitoring
+data:
+  kubernetes.yaml: |
+    mode: cluster
+  settings.yaml: |
+    title: HomeLab
+    language: zh-Hant
+    theme: dark
+    color: slate
+    headerStyle: clean
+    hideVersion: true
+    layout:
+      機票優惠:
+        style: row
+        columns: 2
+      AIOps 自我修復:
+        style: row
+        columns: 2
+      監控:
+        style: row
+        columns: 3
+  services.yaml: |
+    - 機票優惠:
+        - 機票追蹤:
+            icon: mdi-airplane
+            href: http://flights.localhost:8000
+            description: 打字就能改追蹤航線，每 3 小時自動檢查
+            namespace: travel
+            app: flight-watcher
+            podSelector: app=flight-watcher
+            widget:
+              type: customapi
+              url: http://flight-watcher.travel.svc.cluster.local:8080/api/state
+              refreshInterval: 60000
+              display: dynamic-list
+              mappings:
+                items: watches
+                name: route
+                label: summary
+                target: http://flights.localhost:8000
+        - ntfy 通知:
+            icon: ntfy.png
+            href: http://ntfy.localhost:8000/flights
+            description: 降價推播，也可以在這裡打字下指令
+            namespace: travel
+            app: ntfy
+            podSelector: app=ntfy
+    - AIOps 自我修復:
+        - AIOps Agent:
+            icon: mdi-robot-outline
+            href: http://localhost:30080
+            description: 偵測 → 診斷（規則 / 知識庫 / 網路搜尋 + LLM）→ 修復 → 驗證 → 學習
+            namespace: aiops-demo
+            app: aiops-agent
+            podSelector: app=aiops-agent
+            widget:
+              type: prometheusmetric
+              url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+              refreshInterval: 30000
+              metrics:
+                - label: 未 Ready 的 Pod
+                  query: sum(kube_pod_status_ready{condition="false",namespace=~"aiops-demo|travel"}) or vector(0)
+                - label: 自動修好（24h）
+                  query: sum(increase(aiops_events_total{stage="validated"}[24h])) or vector(0)
+                  format:
+                    type: number
+                    options:
+                      maximumFractionDigits: 0
+                - label: 學會的修法
+                  query: aiops_kb_entries
+                - label: 上次掃描
+                  query: time() - aiops_last_scan_timestamp_seconds
+                  format:
+                    type: number
+                    suffix: " 秒前"
+                    options:
+                      maximumFractionDigits: 0
+        - AIOps 儀表板（Grafana）:
+            icon: grafana.png
+            href: http://grafana.localhost:8000/d/aiops-agent
+            description: 修復趨勢、重啟排行、代理 log 與 Kubernetes 警告事件
+    - 監控:
+        - Grafana:
+            icon: grafana.png
+            href: http://grafana.localhost:8000
+            description: 所有儀表板（Kubernetes / AIOps / 機票）
+            namespace: monitoring
+            app: grafana
+            podSelector: app.kubernetes.io/name=grafana
+            widget:
+              type: grafana
+              url: http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local
+              username: "{{HOMEPAGE_VAR_GRAFANA_USER}}"
+              password: "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}"
+              fields: ["dashboards", "datasources"]
+        - Prometheus:
+            icon: prometheus.png
+            href: http://grafana.localhost:8000/explore
+            description: 指標（在 Grafana Explore 查詢）
+            namespace: monitoring
+            app: prometheus
+            podSelector: app.kubernetes.io/name=prometheus
+            widget:
+              type: prometheus
+              url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        - Loki:
+            icon: loki.png
+            href: http://grafana.localhost:8000/explore
+            description: 所有 Pod 的 log + Kubernetes 事件（保留 7 天）
+            namespace: monitoring
+            app: loki
+            podSelector: app.kubernetes.io/name in (loki, alloy)
+  widgets.yaml: |
+    - kubernetes:
+        cluster:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+          label: k3s
+        nodes:
+          show: false
+    - datetime:
+        text_size: md
+        locale: zh-TW
+        format:
+          dateStyle: long
+          timeStyle: short
+          hour12: false
+  bookmarks.yaml: |
+    - 專案:
+        - GitHub:
+            - icon: github.png
+              href: https://github.com/KJLavender/AIOps
+  custom.css: ""
+  custom.js: ""
+  docker.yaml: ""
+  # v2.4 copies every skeleton file it doesn't find; /app/config is read-only.
+  proxmox.yaml: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homepage
+  namespace: monitoring
+  labels:
+    app: homepage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: homepage
+  template:
+    metadata:
+      labels:
+        app: homepage
+      annotations:
+        # Bump to roll the pod after editing the ConfigMap.
+        config-revision: "2"
+    spec:
+      serviceAccountName: homepage
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      containers:
+        - name: homepage
+          image: ghcr.io/gethomepage/homepage:v2.4.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # The first entry is required for the kubelet probe.
+            - name: HOMEPAGE_ALLOWED_HOSTS
+              value: "$(MY_POD_IP):3000,localhost:8000,home.localhost:8000"
+            - name: HOMEPAGE_VAR_GRAFANA_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: admin-user
+            - name: HOMEPAGE_VAR_GRAFANA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: admin-password
+          ports:
+            - name: http
+              containerPort: 3000
+          livenessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            requests: {cpu: 20m, memory: 96Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: config, mountPath: /app/config/custom.js, subPath: custom.js}
+            - {name: config, mountPath: /app/config/custom.css, subPath: custom.css}
+            - {name: config, mountPath: /app/config/bookmarks.yaml, subPath: bookmarks.yaml}
+            - {name: config, mountPath: /app/config/docker.yaml, subPath: docker.yaml}
+            - {name: config, mountPath: /app/config/proxmox.yaml, subPath: proxmox.yaml}
+            - {name: config, mountPath: /app/config/kubernetes.yaml, subPath: kubernetes.yaml}
+            - {name: config, mountPath: /app/config/services.yaml, subPath: services.yaml}
+            - {name: config, mountPath: /app/config/settings.yaml, subPath: settings.yaml}
+            - {name: config, mountPath: /app/config/widgets.yaml, subPath: widgets.yaml}
+            - {name: logs, mountPath: /app/config/logs}
+      volumes:
+        - name: config
+          configMap:
+            name: homepage
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: monitoring
+spec:
+  selector:
+    app: homepage
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homepage
+  namespace: monitoring
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: home.localhost
+      http: &paths
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homepage
+                port:
+                  name: http
+    # No host: anything else on :8000 (plain http://localhost:8000) lands here.
+    - http: *paths
