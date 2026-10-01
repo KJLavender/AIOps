@@ -436,6 +436,7 @@ pytest -q
 | 網址 | 內容 |
 | --- | --- |
 | **http://localhost:8000** | **Homepage 入口網站：下面全部集中在一頁**（各航線現價、代理狀態、每個服務的 Pod 狀態） |
+| **http://home.100-115-153-20.sslip.io:8000** | **手機用**（Tailscale 連線後）；也可以 `http://homelab:8000` |
 | http://grafana.localhost:8000 | Grafana（帳號 admin，密碼：`kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}'` 再 base64 解碼） |
 | http://flights.localhost:8000 | 機票追蹤網頁 |
 | http://ntfy.localhost:8000/flights | ntfy 通知 + 聊天頻道 |
@@ -464,7 +465,22 @@ pytest -q
 
 [Homepage](https://gethomepage.dev) v2.4，部署在 `monitoring` namespace（Grafana widget 要讀 `grafana-admin` Secret）。每個磚塊連到一個服務，並顯示該服務 Pod 的狀態（Kubernetes 整合）和即時資料：機票追蹤用 `customapi` 讀 `/api/state` 的 `summary` 欄位、AIOps 用 `prometheusmetric`、Grafana / Prometheus 用內建 widget。Ingress 同時接 `home.localhost` 和沒有 host 的請求，所以 `http://localhost:8000` 直接就是入口。注意 v2.4 啟動時會補齊 skeleton 的每個設定檔（含 `proxmox.yaml`），ConfigMap 必須全部提供，否則在唯讀目錄複製失敗而退回預設頁面。
 
-### 15.4 這個環境的注意事項
+### 15.4 手機存取（Tailscale）
+
+- Tailscale 裝在 WSL 的 Ubuntu 裡（機器名 `homelab`，IP `100.115.153.20`，開機自動啟動，`--accept-dns=false` 避免改到 k3s 的 DNS）。手機裝 Tailscale App、用同一個帳號登入即可。
+- 每個 Ingress 都多一個 `<名稱>.100-115-153-20.sslip.io` 主機名（sslip.io 是公開 DNS，會解析成名稱裡的 IP），Homepage 的連結都用這組。
+- 電腦連不到 WSL 自己的 Tailscale IP（只有 Linux 那邊有這個介面），所以 Homepage 的 `custom.js` 在用 `*.localhost` 開啟時把連結改回 `*.localhost`；不需要改 hosts 檔、也不需要系統管理員權限。
+- ntfy 不設 `NTFY_BASE_URL`，網頁 App 會對「目前開啟的網址」連線，電腦和手機都能用。
+- Tailscale 的機器金鑰預設 180 天到期，可在 Tailscale 管理頁對 `homelab` 選「Disable key expiry」。
+
+### 15.5 資源隔離（`cluster/resource-policies.yaml`）
+
+- 每個服務各自一個 Pod；多容器的 Pod（Grafana、Loki、Prometheus、Alloy）裡多出來的都是同一個服務的 sidecar。
+- 所有容器都有 CPU / 記憶體的 requests 與 limits；`aiops-demo`、`travel`、`monitoring` 各有 LimitRange，新 Pod 忘了設也會套用預設上限。
+- PriorityClass：`homelab-platform`（監控 + 代理）> `homelab-service`（機票、ntfy、入口網站）> 故障案例（0），資源不足時先犧牲故障案例。
+- case5 的 256Gi request 另外設了同樣的 limit，否則 LimitRange 預設的 128Mi limit 會小於 request，Pod 直接被拒絕而不是 Pending。
+
+### 15.6 這個環境的注意事項
 
 - WSL 的 Ubuntu 曾在沒有終端機連著時自行關閉（k3s 跟著重啟）。`.wslconfig` 的 `instanceIdleTimeout=-1` 已在 2026-10-01 09:17 執行 `wsl --shutdown` 後生效，之後閒置也不再重啟。
 - Pod 用 Service 名稱連線時，記得 `enableServiceLinks: false`：Kubernetes 會注入 `<SERVICE>_PORT=tcp://…`，曾蓋掉 `AIOPS_DASHBOARD_PORT`，ntfy 也會把 `NTFY_*` 當設定讀。

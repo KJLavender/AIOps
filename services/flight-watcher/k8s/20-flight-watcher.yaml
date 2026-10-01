@@ -1,6 +1,6 @@
 # Flight deal watcher: checks Google Flights every 3h for each watched route,
 # takes natural-language commands from the web UI or the ntfy "flights" topic.
-# Web UI: http://flights.localhost:8000
+# Web UI: http://flights.100-115-153-20.sslip.io:8000
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -107,8 +107,8 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: flights.localhost
-      http:
+    - host: flights.100-115-153-20.sslip.io   # via Tailscale (phone) or the Windows hosts file (PC)
+      http: &paths
         paths:
           - path: /
             pathType: Prefix
@@ -117,6 +117,8 @@ spec:
                 name: flight-watcher
                 port:
                   name: http
+    - host: flights.localhost
+      http: *paths
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

@@ -1,6 +1,6 @@
 # Self-hosted ntfy: push notifications to phone/desktop, and the chat channel
 # for flight-watcher commands (type into the "flights" topic).
-# Web app: http://ntfy.localhost:8000/flights
+# Web app: http://ntfy.100-115-153-20.sslip.io:8000/flights
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -40,8 +40,9 @@ spec:
           image: binwiederhier/ntfy:v2.28.0
           args: ["serve"]
           env:
-            - name: NTFY_BASE_URL
-              value: "http://ntfy.localhost:8000"
+            # No NTFY_BASE_URL on purpose: the web app then talks to whatever
+            # address it was opened from (ntfy.localhost on the PC, the
+            # Tailscale name on the phone).
             - name: NTFY_LISTEN_HTTP
               value: ":80"
             - name: NTFY_CACHE_FILE
@@ -98,8 +99,8 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: ntfy.localhost
-      http:
+    - host: ntfy.100-115-153-20.sslip.io   # via Tailscale (phone) or the Windows hosts file (PC)
+      http: &paths
         paths:
           - path: /
             pathType: Prefix
@@ -108,6 +109,8 @@ spec:
                 name: ntfy
                 port:
                   name: http
+    - host: ntfy.localhost
+      http: *paths
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

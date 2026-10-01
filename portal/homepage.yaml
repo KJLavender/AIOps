@@ -1,5 +1,6 @@
 # Homepage (gethomepage.dev): one portal for everything on the cluster.
-# http://localhost:8000 (or http://home.localhost:8000)
+# http://home.100-115-153-20.sslip.io:8000 (PC and phone), http://homelab:8000 (phone on
+# Tailscale), http://localhost:8000 (this PC).
 #
 # Lives in the monitoring namespace so the Grafana widget can read the
 # grafana-admin Secret. Each service tile shows its pods' status/CPU/memory
@@ -65,21 +66,17 @@ data:
     color: slate
     headerStyle: clean
     hideVersion: true
+    # Default (column) layout: three groups side by side on a PC, stacked on a
+    # phone. "style: row" with fixed columns overflowed narrow screens.
     layout:
       機票優惠:
-        style: row
-        columns: 2
       AIOps 自我修復:
-        style: row
-        columns: 2
       監控:
-        style: row
-        columns: 3
   services.yaml: |
     - 機票優惠:
         - 機票追蹤:
             icon: mdi-airplane
-            href: http://flights.localhost:8000
+            href: http://flights.100-115-153-20.sslip.io:8000
             description: 打字就能改追蹤航線，每 3 小時自動檢查
             namespace: travel
             app: flight-watcher
@@ -93,10 +90,10 @@ data:
                 items: watches
                 name: route
                 label: summary
-                target: http://flights.localhost:8000
+                target: http://flights.100-115-153-20.sslip.io:8000
         - ntfy 通知:
             icon: ntfy.png
-            href: http://ntfy.localhost:8000/flights
+            href: http://ntfy.100-115-153-20.sslip.io:8000/flights
             description: 降價推播，也可以在這裡打字下指令
             namespace: travel
             app: ntfy
@@ -104,7 +101,7 @@ data:
     - AIOps 自我修復:
         - AIOps Agent:
             icon: mdi-robot-outline
-            href: http://localhost:30080
+            href: http://agent.100-115-153-20.sslip.io:8000
             description: 偵測 → 診斷（規則 / 知識庫 / 網路搜尋 + LLM）→ 修復 → 驗證 → 學習
             namespace: aiops-demo
             app: aiops-agent
@@ -124,21 +121,14 @@ data:
                       maximumFractionDigits: 0
                 - label: 學會的修法
                   query: aiops_kb_entries
-                - label: 上次掃描
-                  query: time() - aiops_last_scan_timestamp_seconds
-                  format:
-                    type: number
-                    suffix: " 秒前"
-                    options:
-                      maximumFractionDigits: 0
         - AIOps 儀表板（Grafana）:
             icon: grafana.png
-            href: http://grafana.localhost:8000/d/aiops-agent
+            href: http://grafana.100-115-153-20.sslip.io:8000/d/aiops-agent
             description: 修復趨勢、重啟排行、代理 log 與 Kubernetes 警告事件
     - 監控:
         - Grafana:
             icon: grafana.png
-            href: http://grafana.localhost:8000
+            href: http://grafana.100-115-153-20.sslip.io:8000
             description: 所有儀表板（Kubernetes / AIOps / 機票）
             namespace: monitoring
             app: grafana
@@ -151,7 +141,7 @@ data:
               fields: ["dashboards", "datasources"]
         - Prometheus:
             icon: prometheus.png
-            href: http://grafana.localhost:8000/explore
+            href: http://grafana.100-115-153-20.sslip.io:8000/explore
             description: 指標（在 Grafana Explore 查詢）
             namespace: monitoring
             app: prometheus
@@ -159,9 +149,11 @@ data:
             widget:
               type: prometheus
               url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+              # Two blocks fit a phone screen; total targets is just up + down.
+              fields: ["targets_up", "targets_down"]
         - Loki:
             icon: loki.png
-            href: http://grafana.localhost:8000/explore
+            href: http://grafana.100-115-153-20.sslip.io:8000/explore
             description: 所有 Pod 的 log + Kubernetes 事件（保留 7 天）
             namespace: monitoring
             app: loki
@@ -189,7 +181,21 @@ data:
             - icon: github.png
               href: https://github.com/KJLavender/AIOps
   custom.css: ""
-  custom.js: ""
+  # Links point at the Tailscale names (they work on the phone). This PC can't
+  # reach its own Tailscale address, so when the page is opened via
+  # *.localhost, rewrite the links to the *.localhost names instead.
+  custom.js: |
+    (function () {
+      if (!/(^|\.)localhost$/.test(location.hostname)) return;
+      var from = ".100-115-153-20.sslip.io";
+      function fix() {
+        document.querySelectorAll('a[href*="' + from + '"]').forEach(function (a) {
+          a.href = a.href.replace(from, ".localhost");
+        });
+      }
+      new MutationObserver(fix).observe(document.documentElement, { childList: true, subtree: true });
+      fix();
+    })();
   docker.yaml: ""
   # v2.4 copies every skeleton file it doesn't find; /app/config is read-only.
   proxmox.yaml: ""
@@ -212,7 +218,7 @@ spec:
         app: homepage
       annotations:
         # Bump to roll the pod after editing the ConfigMap.
-        config-revision: "2"
+        config-revision: "6"
     spec:
       serviceAccountName: homepage
       automountServiceAccountToken: true
@@ -237,7 +243,7 @@ spec:
                   fieldPath: status.podIP
             # The first entry is required for the kubelet probe.
             - name: HOMEPAGE_ALLOWED_HOSTS
-              value: "$(MY_POD_IP):3000,localhost:8000,home.localhost:8000"
+              value: "$(MY_POD_IP):3000,localhost:8000,home.localhost:8000,home.100-115-153-20.sslip.io:8000,homelab:8000,homelab.tail5b14ff.ts.net:8000,100.115.153.20:8000"
             - name: HOMEPAGE_VAR_GRAFANA_USER
               valueFrom:
                 secretKeyRef:
@@ -251,6 +257,12 @@ spec:
           ports:
             - name: http
               containerPort: 3000
+          # Ready gate keeps Traefik from routing to it before Next.js is up.
+          readinessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /api/healthcheck
@@ -299,7 +311,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: home.localhost
+    - host: home.100-115-153-20.sslip.io
       http: &paths
         paths:
           - path: /
@@ -309,5 +321,7 @@ spec:
                 name: homepage
                 port:
                   name: http
-    # No host: anything else on :8000 (plain http://localhost:8000) lands here.
+    - host: home.localhost
+      http: *paths
+    # No host: anything else on :8000 (http://localhost:8000, http://homelab:8000).
     - http: *paths
