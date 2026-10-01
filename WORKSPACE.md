@@ -435,6 +435,7 @@ pytest -q
 
 | 網址 | 內容 |
 | --- | --- |
+| **http://localhost:8000** | **Homepage 入口網站：下面全部集中在一頁**（各航線現價、代理狀態、每個服務的 Pod 狀態） |
 | http://grafana.localhost:8000 | Grafana（帳號 admin，密碼：`kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}'` 再 base64 解碼） |
 | http://flights.localhost:8000 | 機票追蹤網頁 |
 | http://ntfy.localhost:8000/flights | ntfy 通知 + 聊天頻道 |
@@ -459,9 +460,13 @@ pytest -q
 - 打字控制（網頁或 ntfy `flights` 頻道）：Ollama 解析自由文字，規則解析器當備援；規則抓到的日期/價格/天數優先（LLM 曾把「12月」解成到 2027-01-01）。
 - `travel` namespace 也在 AIOps 代理監看範圍內。詳見 `services/flight-watcher/README.md`。
 
-### 15.3 這個環境的注意事項
+### 15.3 入口網站（`portal/homepage.yaml`）
 
-- 今晚 WSL 的 Ubuntu 曾多次自行重啟（k3s 跟著重啟）。`.wslconfig` 已設 `instanceIdleTimeout=-1`，這個設定要等 WSL 完整重啟（`wsl --shutdown`）後才會生效。
+[Homepage](https://gethomepage.dev) v2.4，部署在 `monitoring` namespace（Grafana widget 要讀 `grafana-admin` Secret）。每個磚塊連到一個服務，並顯示該服務 Pod 的狀態（Kubernetes 整合）和即時資料：機票追蹤用 `customapi` 讀 `/api/state` 的 `summary` 欄位、AIOps 用 `prometheusmetric`、Grafana / Prometheus 用內建 widget。Ingress 同時接 `home.localhost` 和沒有 host 的請求，所以 `http://localhost:8000` 直接就是入口。注意 v2.4 啟動時會補齊 skeleton 的每個設定檔（含 `proxmox.yaml`），ConfigMap 必須全部提供，否則在唯讀目錄複製失敗而退回預設頁面。
+
+### 15.4 這個環境的注意事項
+
+- WSL 的 Ubuntu 曾在沒有終端機連著時自行關閉（k3s 跟著重啟）。`.wslconfig` 的 `instanceIdleTimeout=-1` 已在 2026-10-01 09:17 執行 `wsl --shutdown` 後生效，之後閒置也不再重啟。
 - Pod 用 Service 名稱連線時，記得 `enableServiceLinks: false`：Kubernetes 會注入 `<SERVICE>_PORT=tcp://…`，曾蓋掉 `AIOPS_DASHBOARD_PORT`，ntfy 也會把 `NTFY_*` 當設定讀。
 
 ---

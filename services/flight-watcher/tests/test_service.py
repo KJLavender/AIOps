@@ -156,3 +156,13 @@ def test_metrics_keep_timestamp_precision_and_zero_counters():
     assert "flightwatch_watches_active 2\n" in text
     _watcher()
     assert 'flightwatch_commands_total{action="add",parser="llm"} 0' in METRICS.render()
+
+
+def test_state_has_dashboard_summary():
+    from flightwatch.web import state
+
+    w = _watcher([3640])
+    w.handle_text("台北到東京", "web")
+    assert state(w)["watches"][0]["summary"] == "查詢中…"
+    _drain(w)
+    assert state(w)["watches"][0]["summary"] == "NT$3,640 · 10/31"
