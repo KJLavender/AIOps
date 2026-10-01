@@ -34,6 +34,7 @@ spec:
     spec:
       # Service links would inject NTFY_PORT=tcp://... and ntfy reads NTFY_* as config.
       enableServiceLinks: false
+      priorityClassName: homelab-service
       containers:
         - name: ntfy
           image: binwiederhier/ntfy:v2.28.0
@@ -68,7 +69,7 @@ spec:
               mountPath: /var/cache/ntfy
           resources:
             requests: {cpu: 10m, memory: 32Mi}
-            limits: {memory: 128Mi}
+            limits: {cpu: 200m, memory: 128Mi}
       volumes:
         - name: cache
           persistentVolumeClaim:

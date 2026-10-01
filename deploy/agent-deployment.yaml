@@ -20,6 +20,7 @@ spec:
         app: aiops-agent
     spec:
       serviceAccountName: aiops-agent
+      priorityClassName: homelab-platform
       # Service links would inject *_PORT=tcp://... env vars that can clash
       # with our AIOPS_* config (e.g. a Service named aiops-dashboard).
       enableServiceLinks: false
@@ -34,6 +35,9 @@ spec:
           image: aiops-agent:local
           imagePullPolicy: Never
           command: ["sh", "-c", "[ -f /kb/knowledge_base.jsonl ] || cp /app/data/knowledge_base.jsonl /kb/"]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
           volumeMounts:
             - name: kb
               mountPath: /kb
@@ -97,6 +101,7 @@ spec:
               cpu: 50m
               memory: 64Mi
             limits:
+              cpu: 500m
               memory: 256Mi
       volumes:
         - name: kb

@@ -14,6 +14,8 @@ spec:
   createNamespace: true
   valuesContent: |-
     deploymentMode: Monolithic
+    global:
+      priorityClassName: homelab-platform
     loki:
       auth_enabled: false
       commonConfig:
@@ -44,7 +46,7 @@ spec:
         size: 10Gi
       resources:
         requests: {cpu: 100m, memory: 256Mi}
-        limits: {memory: 1Gi}
+        limits: {cpu: "1", memory: 1Gi}
     read:
       replicas: 0
     write:
@@ -56,6 +58,10 @@ spec:
       enabled: false
     resultsCache:
       enabled: false
+    sidecar:
+      resources:
+        requests: {cpu: 10m, memory: 64Mi}
+        limits: {cpu: 100m, memory: 192Mi}
     gateway:
       enabled: false
     lokiCanary:

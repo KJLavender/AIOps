@@ -1,0 +1,56 @@
+# Resource isolation for the HomeLab cluster.
+#
+# 1. PriorityClasses: if the node ever runs short, the scheduler/kubelet give
+#    up the fault-simulation cases (priority 0) before user-facing services,
+#    and those before the platform (monitoring + the self-healing agent).
+# 2. LimitRange per namespace: any container that forgets requests/limits
+#    still gets a floor and a ceiling, so one pod can't starve the others.
+#    (Every workload in this repo also sets its own explicit values.)
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: homelab-platform
+value: 100000
+globalDefault: false
+description: Monitoring stack and the AIOps agent - keep these alive to see and fix everything else.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: homelab-service
+value: 10000
+globalDefault: false
+description: User-facing services (flight-watcher, ntfy, homepage portal).
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-defaults
+  namespace: aiops-demo
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 10m, memory: 32Mi}
+      default: {cpu: 250m, memory: 128Mi}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-defaults
+  namespace: travel
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 10m, memory: 32Mi}
+      default: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-defaults
+  namespace: monitoring
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 10m, memory: 32Mi}
+      default: {cpu: 500m, memory: 256Mi}

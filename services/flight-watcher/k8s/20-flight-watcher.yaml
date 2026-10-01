@@ -33,6 +33,7 @@ spec:
         app: flight-watcher
     spec:
       enableServiceLinks: false
+      priorityClassName: homelab-service
       securityContext:
         fsGroup: 1000
       containers:
@@ -77,7 +78,7 @@ spec:
               mountPath: /data
           resources:
             requests: {cpu: 20m, memory: 96Mi}
-            limits: {memory: 384Mi}
+            limits: {cpu: 500m, memory: 384Mi}
       volumes:
         - name: data
           persistentVolumeClaim:
