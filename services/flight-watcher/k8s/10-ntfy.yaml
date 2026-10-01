@@ -40,9 +40,16 @@ spec:
           image: binwiederhier/ntfy:v2.28.0
           args: ["serve"]
           env:
-            # No NTFY_BASE_URL on purpose: the web app then talks to whatever
-            # address it was opened from (ntfy.localhost on the PC, the
-            # Tailscale name on the phone).
+            # Required with the upstream below, and must equal the server URL
+            # the phone subscribed with: iOS matches pushes by URL + topic.
+            - name: NTFY_BASE_URL
+              value: "http://ntfy.100-115-153-20.sslip.io:8000"
+            # iOS can't keep a background connection to a self-hosted server:
+            # for each message ntfy asks ntfy.sh to send an APNs "poll" push
+            # (topic hash + message id only, no content); the app then fetches
+            # the message from this server over Tailscale.
+            - name: NTFY_UPSTREAM_BASE_URL
+              value: "https://ntfy.sh"
             - name: NTFY_LISTEN_HTTP
               value: ":80"
             - name: NTFY_CACHE_FILE
