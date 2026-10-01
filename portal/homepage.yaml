@@ -280,7 +280,7 @@ spec:
                   fieldPath: status.podIP
             # The first entry is required for the kubelet probe.
             - name: HOMEPAGE_ALLOWED_HOSTS
-              value: "$(MY_POD_IP):3000,localhost:8000,home.localhost:8000,home.100-115-153-20.sslip.io:8000,homelab:8000,homelab.tail5b14ff.ts.net:8000,100.115.153.20:8000"
+              value: "$(MY_POD_IP):3000,localhost:8000,home.localhost:8000,home.100-115-153-20.sslip.io:8000,homelab:8000,100.115.153.20:8000"
             - name: HOMEPAGE_VAR_GRAFANA_USER
               valueFrom:
                 secretKeyRef:
