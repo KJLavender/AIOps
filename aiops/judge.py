@@ -98,6 +98,9 @@ class Judge:
             "model": self.config.judge_model or self.config.ollama_model,
             "prompt": prompt,
             "stream": False,
+            # Qwen3-family models "think" first unless told not to (slow, and noise
+            # before the JSON); ignored by models without a thinking mode.
+            "think": False,
             "format": "json",
             "options": {"num_ctx": self.config.llm_num_ctx, "temperature": 0},
         }).encode("utf-8")
