@@ -9,6 +9,7 @@ metadata:
   name: aiops-eval
   namespace: aiops-demo
 spec:
+  suspend: true   # v2 runs its own nightly evaluation
   schedule: "30 3 * * *"
   timeZone: Asia/Taipei
   concurrencyPolicy: Forbid

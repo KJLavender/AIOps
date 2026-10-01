@@ -136,32 +136,32 @@ data:
                 label: stars_text
                 target: "{url}"
     - AIOps 自我修復:
-        - AIOps Agent:
+        - AIOps v2（多 Agent）:
             icon: mdi-robot-outline
-            href: http://agent.100-115-153-20.sslip.io:8000
-            description: 偵測 → 診斷（規則 / 知識庫 / 網路搜尋 + LLM）→ 修復 → 驗證 → 學習
-            namespace: aiops-demo
-            app: aiops-agent
-            podSelector: app=aiops-agent
+            href: http://aiops.100-115-153-20.sslip.io:8000
+            description: monitor → diagnose → repair → validate，各自一個 pod，用 Kubernetes 資源交接
+            namespace: aiops-system
+            app: aiops-v2
+            podSelector: app.kubernetes.io/part-of=aiops-v2
             widget:
               type: prometheusmetric
               url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
               refreshInterval: 30000
               metrics:
-                - label: 未 Ready 的 Pod
-                  query: sum(kube_pod_status_ready{condition="false",namespace=~"aiops-demo|travel"}) or vector(0)
+                - label: 處理中的事故
+                  query: max(aiops_incidents_open) or vector(0)
                 - label: 自動修好（24h）
-                  query: sum(increase(aiops_events_total{stage="validated"}[24h])) or vector(0)
+                  query: sum(increase(aiops_remediations_total{phase="validated"}[24h])) or vector(0)
                   format:
                     type: number
                     options:
                       maximumFractionDigits: 0
                 - label: 學會的修法
-                  query: aiops_kb_entries
+                  query: max(aiops_lessons) or vector(0)
         - AIOps 儀表板（Grafana）:
             icon: grafana.png
-            href: http://grafana.100-115-153-20.sslip.io:8000/d/aiops-agent
-            description: 修復趨勢、重啟排行、代理 log 與 Kubernetes 警告事件
+            href: http://grafana.100-115-153-20.sslip.io:8000/d/aiops-v2
+            description: 事故與修復結果、LLM 決策品質、四個 Agent 的健康狀態與 log
     - 監控:
         - Grafana:
             icon: grafana.png
@@ -255,7 +255,7 @@ spec:
         app: homepage
       annotations:
         # Bump to roll the pod after editing the ConfigMap.
-        config-revision: "7"
+        config-revision: "8"
     spec:
       serviceAccountName: homepage
       automountServiceAccountToken: true
