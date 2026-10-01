@@ -32,6 +32,9 @@ def _ask(prompt: str, config: Config) -> str:
         "model": config.ollama_model,
         "prompt": prompt,
         "stream": False,
+        # Qwen3-family models "think" first unless told not to (slow, and noise
+        # before the JSON); ignored by models without a thinking mode.
+        "think": False,
         # Same num_ctx as the AIOps agent: Ollama reloads the model when it changes.
         "options": {"temperature": 0.2, "num_predict": 120, "num_ctx": 8192},
     }).encode("utf-8")
