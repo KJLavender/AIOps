@@ -104,6 +104,9 @@ class OllamaAnalyzer(LLMAnalyzer):
                 "model": self.config.ollama_model,
                 "prompt": prompt,
                 "stream": False,
+                # Qwen3-family models "think" first unless told not to (slow, and noise
+                # before the JSON); ignored by models without a thinking mode.
+                "think": False,
                 "format": "json",
                 # Ollama's default context silently drops the start of long
                 # prompts - i.e. the instructions - so size it explicitly.

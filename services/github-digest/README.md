@@ -15,7 +15,7 @@ One image, two daily digests, each running in its own pod (`MODE`):
 - **Picks**: per topic, one "rising" search (created ≤ 180 days, ≥ 10★) and one
   "established" search (pushed ≤ 60 days, ≥ 50★); results are taken
   round-robin across topics so no single topic fills the list.
-- **Summaries**: Ollama (`qwen2.5:7b`); repos without a description get
+- **Summaries**: Ollama (`qwen3.5:4b`); repos without a description get
   "（作者沒有寫描述）" instead of an invented purpose.
 - **Catch-up**: if the pod starts after today's run time and today's digest is
   missing, it runs immediately.

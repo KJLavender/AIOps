@@ -32,7 +32,7 @@ class Config:
     public_url: str = ""  # link in notifications (this service's web UI)
 
     ollama_endpoint: str = ""
-    ollama_model: str = "qwen2.5:7b"
+    ollama_model: str = "qwen3.5:4b"
     llm_timeout_seconds: int = 60
 
     @classmethod
@@ -52,6 +52,6 @@ class Config:
             ntfy_topic=os.getenv("NTFY_TOPIC", "github"),
             public_url=os.getenv("PUBLIC_URL", ""),
             ollama_endpoint=os.getenv("OLLAMA_ENDPOINT", ""),
-            ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:4b"),
             llm_timeout_seconds=int(os.getenv("LLM_TIMEOUT", "60")),
         )

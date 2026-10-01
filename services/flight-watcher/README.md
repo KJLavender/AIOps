@@ -16,7 +16,7 @@ by typing a sentence — in the web UI or in the ntfy `flights` topic.
 - **Schedule**: every route is re-checked every `CHECK_INTERVAL_MINUTES`
   (180). New commands are checked immediately. Alerts go out only for a new
   low (≥ 3 % below the previous low) or when a target price is crossed.
-- **Commands**: Ollama (`qwen2.5:7b`) turns free text into a command; a
+- **Commands**: Ollama (`qwen3.5:4b`) turns free text into a command; a
   deterministic parser handles the common forms and takes over when the LLM is
   down or names a place that doesn't resolve. Dates/prices/trip length found by
   the parser win over the LLM's reading.

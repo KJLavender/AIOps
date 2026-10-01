@@ -88,7 +88,7 @@ spec:
             - name: OLLAMA_ENDPOINT
               value: "http://ollama.aiops-demo.svc.cluster.local:11434"
             - name: OLLAMA_MODEL
-              value: "qwen2.5:7b"
+              value: "qwen3.5:4b"
           ports:
             - name: http
               containerPort: 8080
@@ -151,7 +151,7 @@ spec:
             - name: OLLAMA_ENDPOINT
               value: "http://ollama.aiops-demo.svc.cluster.local:11434"
             - name: OLLAMA_MODEL
-              value: "qwen2.5:7b"
+              value: "qwen3.5:4b"
           ports:
             - name: http
               containerPort: 8080

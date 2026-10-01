@@ -188,6 +188,9 @@ def llm_parse(text: str, today: date, config: Config) -> Optional[Command]:
         "model": config.ollama_model,
         "prompt": _PROMPT.format(today=today.isoformat(), text=text),
         "stream": False,
+        # Qwen3-family models "think" first unless told not to (slow, and noise
+        # before the JSON); ignored by models without a thinking mode.
+        "think": False,
         "format": "json",
         # Same num_ctx as the AIOps agent: Ollama reloads the model when it changes.
         "options": {"temperature": 0, "num_ctx": 8192},
@@ -206,6 +209,10 @@ def llm_parse(text: str, today: date, config: Config) -> Optional[Command]:
     action = str(data.get("action") or "unknown")
     if action not in ACTIONS:
         return None
+    # "replace" stops every other watch: only honour it when the user said so
+    # explicitly (只追蹤/只要/只看), never on an LLM reading of "改成/更改".
+    if action == "replace" and not _REPLACE_RE.search(text):
+        action = "add"
 
     def _num(key, cast):
         try:
@@ -238,6 +245,10 @@ def parse(text: str, today: date, config: Config) -> Command:
     rules = rule_parse(text, today, config.default_origin)
     llm = llm_parse(text, today, config)
     if llm is None or llm.action == "unknown":
+        return rules
+    # "看看去首爾的便宜機票" names a place the user isn't watching yet: that is
+    # a request to start watching it, not to re-check the existing routes.
+    if llm.action == "check" and rules.action == "add":
         return rules
     if llm.action in ("add", "replace"):
         llm.origin = llm.origin or config.default_origin

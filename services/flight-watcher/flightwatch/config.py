@@ -47,7 +47,7 @@ class Config:
 
     # --- Natural-language commands (Ollama) ---
     ollama_endpoint: str = ""
-    ollama_model: str = "qwen2.5:7b"
+    ollama_model: str = "qwen3.5:4b"
     llm_timeout_seconds: int = 60
 
     @classmethod
@@ -69,6 +69,6 @@ class Config:
             ntfy_topic=os.getenv("NTFY_TOPIC", "flights"),
             extra_notify_urls=_list("EXTRA_NOTIFY_URLS"),
             ollama_endpoint=os.getenv("OLLAMA_ENDPOINT", ""),
-            ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:4b"),
             llm_timeout_seconds=_int("LLM_TIMEOUT", 60),
         )

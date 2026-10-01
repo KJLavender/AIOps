@@ -123,3 +123,36 @@ def test_year_aware_months():
 def test_next_year_without_month_is_vague():
     assert _rules("明年的機票").vague_year is True
     assert _rules("明年3月").vague_year is False
+
+
+def test_llm_replace_needs_explicit_wording(monkeypatch):
+    import json as _json
+
+    from flightwatch import nlu
+
+    class _Resp:
+        def __init__(self, action):
+            self.body = _json.dumps({"response": _json.dumps({"action": action, "destination": "東京"})}).encode()
+
+        def read(self):
+            return self.body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(nlu.urllib.request, "urlopen", lambda req, timeout: _Resp("replace"))
+    cfg = Config(ollama_endpoint="http://x")
+    assert nlu.llm_parse("我想要更改目的地是台北到東京", TODAY, cfg).action == "add"
+    assert nlu.llm_parse("只追蹤台北到東京", TODAY, cfg).action == "replace"
+
+
+def test_place_named_in_check_means_add(monkeypatch):
+    from flightwatch import nlu
+
+    monkeypatch.setattr(nlu, "llm_parse", lambda text, today, config: nlu.Command(
+        action="check", destination="首爾", parser="llm"))
+    cmd = parse("幫我看看去首爾的便宜機票", TODAY, Config(ollama_endpoint="http://x"))
+    assert (cmd.action, cmd.destination, cmd.parser) == ("add", "首爾", "rules")

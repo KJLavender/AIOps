@@ -244,6 +244,8 @@ future-agi 是 LLM 應用的評估 / 監控平台，核心是「模擬 → 評�
 | 模擬 `simulate.py` + `scenarios.json` | 7 個凍結的故障情境（含下毒的搜尋結果、誤導建議、錯 port、慢啟動），用假叢集跑真的決策流程；CronJob `aiops-eval` 每晚 03:30，摘要推到 ntfy `aiops` 頻道 |
 | 優化 | 每個 prompt 版本計分，`AIOPS_PROMPT_VARIANT` 選最佳（目前 default 7/7、evidence-first 6/7，不安全修改都是 0） |
 
+**模型選擇（2026-10-01）**：全部服務改用 `qwen3.5:4b`。這台電腦同時跑遊戲 / 模擬器，桌面程式約占 2.7GB 顯示卡記憶體，`qwen3:8b`（6.2GB）放不下、被擠到系統記憶體後慢了約 60 倍。比較結果：AIOps 情境 qwen2.5:7b 7/7×3、qwen3:4b 6/7×3（裁判較嚴、每次錯擋 httpd）、qwen3.5:4b 7/7×3；中文指令 qwen2.5:7b 8/10、qwen3:4b 9/10、qwen3.5:4b 9/10（加上「取代全部航線必須明講『只追蹤』」規則後）；顯示卡記憶體 5.1GB → 3.3GB。所有呼叫都帶 `think: false`（Qwen3 系列預設會先思考）。
+
 觀察：7B 模型當裁判偏寬鬆（曾給自編的 `/healthz` 滿分），最後是 pre-check 擋下；多層防護不能省。另外 Ollama 只要 `num_ctx` 不同就會重新載入模型，所以三個服務統一用 8192。
 
 實測（case6，nginx 的 readiness probe 打 `/healthz` 回 404）：搜尋 → LLM 選 `set_readiness_probe_path` `/index.html` → 套用 → Running & Ready → 學習；再弄壞一次時直接 `KB exact hit` 修好。
@@ -378,7 +380,7 @@ docker save aiops-agent:local | sudo k3s ctr images import -
 | `agent-pvc.yaml` | 知識庫用的 `aiops-kb` PVC（local-path，100Mi） |
 | `agent-rbac-travel.yaml` | 同樣的 Role 建在 `travel` namespace，讓代理也能監看、修復機票服務 |
 | `agent-metrics.yaml` | `aiops-agent-metrics` Service + ServiceMonitor（Prometheus 抓 `:30080/metrics`） |
-| `agent-deployment.yaml` | 單一副本代理（`Recreate` 策略，避免兩個 Pod 同時寫 KB），`imagePullPolicy: Never`（使用本機映像）；監看 `aiops-demo,travel`；網路搜尋 + LLM 自動修復開啟；KB 掛在 PVC `/kb`；**已啟用 LLM**，模型 `qwen2.5:7b`、confidence 門檻 0.6；image / env 白名單；`enableServiceLinks: false`（避免 `aiops-dashboard` Service 注入的 `AIOPS_DASHBOARD_PORT=tcp://…` 蓋掉設定）；驗證參數縮短（timeout 120s、stability 15s、poll 8s） |
+| `agent-deployment.yaml` | 單一副本代理（`Recreate` 策略，避免兩個 Pod 同時寫 KB），`imagePullPolicy: Never`（使用本機映像）；監看 `aiops-demo,travel`；網路搜尋 + LLM 自動修復開啟；KB 掛在 PVC `/kb`；**已啟用 LLM**，模型 `qwen3.5:4b`、confidence 門檻 0.6；image / env 白名單；`enableServiceLinks: false`（避免 `aiops-dashboard` Service 注入的 `AIOPS_DASHBOARD_PORT=tcp://…` 蓋掉設定）；驗證參數縮短（timeout 120s、stability 15s、poll 8s） |
 | `ollama-endpoint.yaml` | 無 selector 的 Service + 手動 Endpoints，把叢集內的 `ollama:11434` 導向主機 IP `192.168.0.16`（WSL 上的 Ollama） |
 
 ```powershell

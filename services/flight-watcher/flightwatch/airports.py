@@ -30,7 +30,7 @@ _CITIES: list[tuple[str, list[str], list[str]]] = [
     ("普吉島", ["HKT"], ["普吉", "phuket"]),
     ("新加坡", ["SIN"], ["singapore"]),
     ("吉隆坡", ["KUL"], ["kuala lumpur"]),
-    ("峇里島", ["DPS"], ["巴厘島", "峇里", "bali"]),
+    ("峇里島", ["DPS"], ["巴厘島", "巴厘岛", "峇里", "bali"]),
     ("峴港", ["DAD"], ["岘港", "da nang", "danang"]),
     ("胡志明市", ["SGN"], ["胡志明", "ho chi minh", "saigon"]),
     ("河內", ["HAN"], ["河内", "hanoi"]),

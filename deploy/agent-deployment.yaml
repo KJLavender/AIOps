@@ -81,7 +81,7 @@ spec:
             - name: AIOPS_OLLAMA_ENDPOINT
               value: "http://ollama:11434"
             - name: AIOPS_OLLAMA_MODEL
-              value: "qwen2.5:7b"
+              value: "qwen3.5:4b"
             - name: AIOPS_LLM_TIMEOUT
               value: "120"
             - name: AIOPS_LLM_MIN_CONFIDENCE
