@@ -1,0 +1,66 @@
+# Loki in Monolithic mode with filesystem storage on a local-path PVC: the
+# right size for a single-node HomeLab (the chart's bundled MinIO is being
+# removed on 2026-10-31). Logs are kept for 7 days.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: loki
+  namespace: kube-system
+spec:
+  repo: https://grafana-community.github.io/helm-charts
+  chart: loki
+  version: 18.13.7
+  targetNamespace: monitoring
+  createNamespace: true
+  valuesContent: |-
+    deploymentMode: Monolithic
+    loki:
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      storage:
+        type: filesystem
+      schemaConfig:
+        configs:
+          - from: "2024-01-01"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+      limits_config:
+        retention_period: 168h
+        allow_structured_metadata: true
+        volume_enabled: true
+      compactor:
+        retention_enabled: true
+        delete_request_store: filesystem
+    singleBinary:
+      replicas: 1
+      persistence:
+        enabled: true
+        storageClass: local-path
+        size: 10Gi
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {memory: 1Gi}
+    read:
+      replicas: 0
+    write:
+      replicas: 0
+    backend:
+      replicas: 0
+    # Memcached caches default to GBs of RAM; not needed at this scale.
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
+    gateway:
+      enabled: false
+    lokiCanary:
+      enabled: false
+    test:
+      enabled: false
+    minio:
+      enabled: false

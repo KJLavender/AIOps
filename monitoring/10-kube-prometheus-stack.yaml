@@ -1,0 +1,96 @@
+# Prometheus + node-exporter + kube-state-metrics + Grafana (with the stock
+# Kubernetes dashboards), installed by the k3s helm-controller.
+# Grafana admin credentials come from the `grafana-admin` Secret (not in git):
+#   kubectl -n monitoring create secret generic grafana-admin \
+#     --from-literal=admin-user=admin --from-literal=admin-password=<password>
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: kube-prometheus-stack
+  namespace: kube-system
+spec:
+  repo: https://prometheus-community.github.io/helm-charts
+  chart: kube-prometheus-stack
+  version: 91.8.2
+  targetNamespace: monitoring
+  createNamespace: true
+  valuesContent: |-
+    # k3s embeds these in the server process; there is nothing to scrape.
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeProxy:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+    defaultRules:
+      rules:
+        etcd: false
+        kubeControllerManager: false
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
+        kubeProxy: false
+    alertmanager:
+      enabled: false   # alerts go through Grafana alerting instead
+    prometheus-node-exporter:
+      # WSL2's "/" is not a shared mount, so the HostToContainer root mount
+      # fails with "not a shared or slave mount". Host filesystem metrics are
+      # the only thing lost.
+      hostRootFsMount:
+        enabled: false
+    prometheus:
+      prometheusSpec:
+        retention: 7d
+        # Pick up ServiceMonitors from every namespace, not just this release.
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        resources:
+          requests: {cpu: 100m, memory: 512Mi}
+          limits: {memory: 2Gi}
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: local-path
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 10Gi
+    grafana:
+      admin:
+        existingSecret: grafana-admin
+        userKey: admin-user
+        passwordKey: admin-password
+      persistence:
+        enabled: true
+        storageClassName: local-path
+        size: 1Gi
+      ingress:
+        enabled: true
+        ingressClassName: traefik
+        hosts: ["grafana.localhost"]
+      grafana.ini:
+        server:
+          root_url: http://grafana.localhost:8000
+        date_formats:
+          default_timezone: Asia/Taipei
+      sidecar:
+        datasources:
+          alertmanager:
+            enabled: false   # Alertmanager itself is disabled above
+        dashboards:
+          enabled: true
+          label: grafana_dashboard
+          searchNamespace: ALL
+          folderAnnotation: grafana_folder
+          provider:
+            foldersFromFilesStructure: true
+      additionalDataSources:
+        - name: Loki
+          uid: loki
+          type: loki
+          access: proxy
+          url: http://loki.monitoring.svc.cluster.local:3100
+          jsonData:
+            maxLines: 1000

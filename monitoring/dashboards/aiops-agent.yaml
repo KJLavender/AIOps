@@ -1,0 +1,667 @@
+# Generated dashboard; Grafana's sidecar loads every ConfigMap labelled grafana_dashboard.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-aiops-agent
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: AIOps
+data:
+  dashboard-aiops-agent.json: |-
+    {
+     "uid": "aiops-agent",
+     "title": "AIOps Agent",
+     "tags": [
+      "aiops",
+      "kubernetes"
+     ],
+     "timezone": "browser",
+     "editable": true,
+     "schemaVersion": 39,
+     "refresh": "30s",
+     "time": {
+      "from": "now-24h",
+      "to": "now"
+     },
+     "panels": [
+      {
+       "id": 1,
+       "type": "row",
+       "title": "Now",
+       "collapsed": false,
+       "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+       },
+       "panels": []
+      },
+      {
+       "id": 2,
+       "type": "stat",
+       "title": "Pods not ready",
+       "description": "Pods in the watched namespaces whose Ready condition is false",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 5,
+        "h": 4
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "sum(kube_pod_status_ready{condition=\"false\",namespace=~\"aiops-demo|travel\"}) or vector(0)",
+         "instant": true,
+         "legendFormat": ""
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "#0ca30c",
+            "value": null
+           },
+           {
+            "color": "#d03b3b",
+            "value": 1
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 3,
+       "type": "stat",
+       "title": "Auto-fixes validated (24h)",
+       "description": "Remediations that passed Running & Ready & stable",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 5,
+        "y": 1,
+        "w": 5,
+        "h": 4
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "sum(increase(aiops_events_total{stage=\"validated\"}[24h])) or vector(0)",
+         "instant": true,
+         "legendFormat": ""
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "text",
+            "value": null
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 4,
+       "type": "stat",
+       "title": "Rollbacks (24h)",
+       "description": "Fixes that failed validation and were undone",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 10,
+        "y": 1,
+        "w": 5,
+        "h": 4
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "sum(increase(aiops_events_total{stage=\"rolled_back\"}[24h])) or vector(0)",
+         "instant": true,
+         "legendFormat": ""
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "text",
+            "value": null
+           },
+           {
+            "color": "#fab219",
+            "value": 1
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 5,
+       "type": "stat",
+       "title": "Learned fixes (KB)",
+       "description": "Verified fixes the agent has learned",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 4,
+        "h": 4
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "aiops_kb_entries",
+         "instant": true,
+         "legendFormat": ""
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "text",
+            "value": null
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 6,
+       "type": "stat",
+       "title": "Last scan",
+       "description": "Seconds since the agent last scanned the cluster (poll interval 20s)",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 19,
+        "y": 1,
+        "w": 5,
+        "h": 4
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "expr": "time() - aiops_last_scan_timestamp_seconds",
+         "instant": true,
+         "legendFormat": ""
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s",
+         "decimals": 0,
+         "color": {
+          "mode": "thresholds"
+         },
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "#0ca30c",
+            "value": null
+           },
+           {
+            "color": "#d03b3b",
+            "value": 120
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "",
+         "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+       }
+      },
+      {
+       "id": 7,
+       "type": "row",
+       "title": "Activity",
+       "collapsed": false,
+       "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+       },
+       "panels": []
+      },
+      {
+       "id": 8,
+       "type": "timeseries",
+       "title": "Agent pipeline events (per 10 min)",
+       "description": "detected -> remediated -> validated; rolled_back = fix undone after failing validation",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "interval": "10m",
+       "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 14,
+        "h": 8
+       },
+       "targets": [
+        {
+         "refId": "D0",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "legendFormat": "detected",
+         "expr": "sum(increase(aiops_events_total{stage=\"detected\"}[10m])) or vector(0)"
+        },
+        {
+         "refId": "R1",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "legendFormat": "remediated",
+         "expr": "sum(increase(aiops_events_total{stage=\"remediated\"}[10m])) or vector(0)"
+        },
+        {
+         "refId": "V2",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "legendFormat": "validated",
+         "expr": "sum(increase(aiops_events_total{stage=\"validated\"}[10m])) or vector(0)"
+        },
+        {
+         "refId": "R3",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "legendFormat": "rolled_back",
+         "expr": "sum(increase(aiops_events_total{stage=\"rolled_back\"}[10m])) or vector(0)"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "min": 0,
+         "color": {
+          "mode": "palette-classic"
+         },
+         "custom": {
+          "drawStyle": "bars",
+          "lineWidth": 2,
+          "fillOpacity": 80,
+          "pointSize": 8,
+          "showPoints": "auto",
+          "spanNulls": true,
+          "barAlignment": 0,
+          "axisSoftMin": 0,
+          "gradientMode": "none",
+          "stacking": {
+           "mode": "none"
+          }
+         }
+        },
+        "overrides": [
+         {
+          "matcher": {
+           "id": "byName",
+           "options": "detected"
+          },
+          "properties": [
+           {
+            "id": "color",
+            "value": {
+             "mode": "fixed",
+             "fixedColor": "#3987e5"
+            }
+           }
+          ]
+         },
+         {
+          "matcher": {
+           "id": "byName",
+           "options": "remediated"
+          },
+          "properties": [
+           {
+            "id": "color",
+            "value": {
+             "mode": "fixed",
+             "fixedColor": "#d95926"
+            }
+           }
+          ]
+         },
+         {
+          "matcher": {
+           "id": "byName",
+           "options": "validated"
+          },
+          "properties": [
+           {
+            "id": "color",
+            "value": {
+             "mode": "fixed",
+             "fixedColor": "#199e70"
+            }
+           }
+          ]
+         },
+         {
+          "matcher": {
+           "id": "byName",
+           "options": "rolled_back"
+          },
+          "properties": [
+           {
+            "id": "color",
+            "value": {
+             "mode": "fixed",
+             "fixedColor": "#c98500"
+            }
+           }
+          ]
+         }
+        ]
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom",
+         "showLegend": true,
+         "calcs": []
+        },
+        "tooltip": {
+         "mode": "multi",
+         "sort": "desc"
+        }
+       }
+      },
+      {
+       "id": 9,
+       "type": "bargauge",
+       "title": "Container restarts (last 1h)",
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "gridPos": {
+        "x": 14,
+        "y": 6,
+        "w": 10,
+        "h": 8
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+         },
+         "instant": true,
+         "legendFormat": "{{namespace}}/{{pod}}",
+         "expr": "topk(8, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"aiops-demo|travel\"}[1h])) > 0)"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "none",
+         "decimals": 0,
+         "min": 0,
+         "color": {
+          "mode": "fixed",
+          "fixedColor": "#3987e5"
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "namePlacement": "left",
+        "sizing": "manual",
+        "minVizHeight": 24,
+        "maxVizHeight": 32,
+        "text": {
+         "titleSize": 13,
+         "valueSize": 16
+        },
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "values": false
+        }
+       }
+      },
+      {
+       "id": 10,
+       "type": "row",
+       "title": "Logs (Loki)",
+       "collapsed": false,
+       "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
+       },
+       "panels": []
+      },
+      {
+       "id": 11,
+       "type": "logs",
+       "title": "Agent log",
+       "datasource": {
+        "type": "loki",
+        "uid": "loki"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 14,
+        "h": 12
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "loki",
+          "uid": "loki"
+         },
+         "expr": "{namespace=\"aiops-demo\", container=\"agent\"}"
+        }
+       ],
+       "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+       }
+      },
+      {
+       "id": 12,
+       "type": "logs",
+       "title": "Kubernetes warning events",
+       "datasource": {
+        "type": "loki",
+        "uid": "loki"
+       },
+       "gridPos": {
+        "x": 14,
+        "y": 15,
+        "w": 10,
+        "h": 12
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "loki",
+          "uid": "loki"
+         },
+         "expr": "{job=\"kubernetes-events\", namespace=~\"aiops-demo|travel\"} |= \"type=Warning\""
+        }
+       ],
+       "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+       }
+      }
+     ],
+     "templating": {
+      "list": []
+     },
+     "annotations": {
+      "list": []
+     }
+    }
