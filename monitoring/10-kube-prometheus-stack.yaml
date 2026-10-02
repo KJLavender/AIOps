@@ -78,9 +78,11 @@ spec:
                   storage: 10Gi
     grafana:
       priorityClassName: homelab-platform
+      # Rendering the stock Kubernetes dashboards bursts well past 500m; at that
+      # cap the readiness probe timed out and Traefik answered "no available server".
       resources:
-        requests: {cpu: 50m, memory: 256Mi}
-        limits: {cpu: 500m, memory: 768Mi}
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 1536Mi}
       admin:
         existingSecret: grafana-admin
         userKey: admin-user

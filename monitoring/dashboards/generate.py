@@ -209,8 +209,35 @@ data:
 """
 
 
+# --- Logs: browse Loki without Explore (anonymous viewers can't use Explore) ---
+def loki_var(name, label, query):
+    return {"name": name, "label": label, "type": "query", "datasource": LOKI, "query": query,
+            "refresh": 2, "includeAll": name == "app", "allValue": ".+", "multi": False, "sort": 1,
+            "current": {}}
+
+
+LOG_SELECTOR = '{namespace="$namespace", app=~"$app"} |~ "(?i)$search"'
+logs_dash = dashboard("logs", "Logs", [
+    {"id": 1, "type": "timeseries", "title": "Log lines per service", "datasource": LOKI,
+     "gridPos": grid(0, 0, 24, 6), "interval": "1m",
+     "targets": [{"refId": "A", "datasource": LOKI, "legendFormat": "{{app}}",
+                  "expr": f"sum by (app) (count_over_time({LOG_SELECTOR} [$__auto]))"}],
+     "fieldConfig": {"defaults": {"min": 0, "decimals": 0, "color": {"mode": "palette-classic"},
+                                  "custom": {"drawStyle": "bars", "fillOpacity": 80, "stacking": {"mode": "normal"}}},
+                     "overrides": []},
+     "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": True},
+                 "tooltip": {"mode": "multi", "sort": "desc"}}},
+    logs(2, "Logs", LOG_SELECTOR, grid(0, 6, 24, 22)),
+], ["logs", "loki"], refresh="30s", time_from="now-1h")
+logs_dash["templating"]["list"] = [
+    loki_var("namespace", "Namespace", "label_values(namespace)"),
+    loki_var("app", "Service", 'label_values({namespace="$namespace"}, app)'),
+    {"name": "search", "label": "Search", "type": "textbox", "query": "", "current": {"value": ""}},
+]
+
 out = os.path.dirname(os.path.abspath(__file__))
-for name, folder, dash in (("aiops-agent", "AIOps", aiops), ("flight-deals", "Travel", flights)):
+for name, folder, dash in (("aiops-agent", "AIOps", aiops), ("flight-deals", "Travel", flights),
+                           ("logs", "Logs", logs_dash)):
     with open(os.path.join(out, name + ".yaml"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(configmap("dashboard-" + name, folder, dash))
 print("written")
