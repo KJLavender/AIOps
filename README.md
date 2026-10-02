@@ -283,6 +283,10 @@ app is closed; message content never leaves your network.
     counters, decision records, nightly simulation results.
   - **Flight Deals** — current fare per route, fare history, routes table,
     checks and chat commands.
+  - **Logs** — pick a namespace and service, type a search term: browse Loki
+    without Explore (anonymous viewers can't use Explore).
+- Grafana is read-only without login (anonymous *Viewer*); its home dashboard is
+  set to **AIOps v2** (`PUT /api/org/preferences {"homeDashboardUID": "aiops-v2"}`).
 
 ![Flight deals Grafana dashboard](docs/images/grafana-flights.png)
 
