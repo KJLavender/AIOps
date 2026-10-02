@@ -178,8 +178,8 @@ data:
               fields: ["dashboards", "datasources"]
         - Prometheus:
             icon: prometheus.png
-            href: http://grafana.100-115-153-20.sslip.io:8000/explore
-            description: 指標（在 Grafana Explore 查詢）
+            href: http://grafana.100-115-153-20.sslip.io:8000/d/efa86fd1d0c121a26444b636a3f509a8
+            description: 叢集與各服務的 CPU / 記憶體用量
             namespace: monitoring
             app: prometheus
             podSelector: app.kubernetes.io/name=prometheus
@@ -190,8 +190,8 @@ data:
               fields: ["targets_up", "targets_down"]
         - Loki:
             icon: loki.png
-            href: http://grafana.100-115-153-20.sslip.io:8000/explore
-            description: 所有 Pod 的 log + Kubernetes 事件（保留 7 天）
+            href: http://grafana.100-115-153-20.sslip.io:8000/d/logs
+            description: 選 namespace / 服務、輸入關鍵字查 log（保留 7 天）
             namespace: monitoring
             app: loki
             podSelector: app.kubernetes.io/name in (loki, alloy)
@@ -255,7 +255,7 @@ spec:
         app: homepage
       annotations:
         # Bump to roll the pod after editing the ConfigMap.
-        config-revision: "8"
+        config-revision: "9"
     spec:
       serviceAccountName: homepage
       automountServiceAccountToken: true

@@ -1,0 +1,165 @@
+# Generated dashboard; Grafana's sidecar loads every ConfigMap labelled grafana_dashboard.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-logs
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: Logs
+data:
+  dashboard-logs.json: |-
+    {
+     "uid": "logs",
+     "title": "Logs",
+     "tags": [
+      "logs",
+      "loki"
+     ],
+     "timezone": "browser",
+     "editable": true,
+     "schemaVersion": 39,
+     "refresh": "30s",
+     "time": {
+      "from": "now-1h",
+      "to": "now"
+     },
+     "panels": [
+      {
+       "id": 1,
+       "type": "timeseries",
+       "title": "Log lines per service",
+       "datasource": {
+        "type": "loki",
+        "uid": "loki"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+       },
+       "interval": "1m",
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "loki",
+          "uid": "loki"
+         },
+         "legendFormat": "{{app}}",
+         "expr": "sum by (app) (count_over_time({namespace=\"$namespace\", app=~\"$app\"} |~ \"(?i)$search\" [$__auto]))"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "min": 0,
+         "decimals": 0,
+         "color": {
+          "mode": "palette-classic"
+         },
+         "custom": {
+          "drawStyle": "bars",
+          "fillOpacity": 80,
+          "stacking": {
+           "mode": "normal"
+          }
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom",
+         "showLegend": true
+        },
+        "tooltip": {
+         "mode": "multi",
+         "sort": "desc"
+        }
+       }
+      },
+      {
+       "id": 2,
+       "type": "logs",
+       "title": "Logs",
+       "datasource": {
+        "type": "loki",
+        "uid": "loki"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 22
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "loki",
+          "uid": "loki"
+         },
+         "expr": "{namespace=\"$namespace\", app=~\"$app\"} |~ \"(?i)$search\""
+        }
+       ],
+       "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+       }
+      }
+     ],
+     "templating": {
+      "list": [
+       {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "query",
+        "datasource": {
+         "type": "loki",
+         "uid": "loki"
+        },
+        "query": "label_values(namespace)",
+        "refresh": 2,
+        "includeAll": false,
+        "allValue": ".+",
+        "multi": false,
+        "sort": 1,
+        "current": {}
+       },
+       {
+        "name": "app",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+         "type": "loki",
+         "uid": "loki"
+        },
+        "query": "label_values({namespace=\"$namespace\"}, app)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".+",
+        "multi": false,
+        "sort": 1,
+        "current": {}
+       },
+       {
+        "name": "search",
+        "label": "Search",
+        "type": "textbox",
+        "query": "",
+        "current": {
+         "value": ""
+        }
+       }
+      ]
+     },
+     "annotations": {
+      "list": []
+     }
+    }
