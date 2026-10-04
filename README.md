@@ -2,6 +2,8 @@
 
 # AIOps HomeLab
 
+**English** | [繁體中文](README.zh-TW.md)
+
 **A self-healing Kubernetes agent — plus the real services it keeps alive.**
 
 Detect → Diagnose → Fix → Validate → Learn, with rules first, a knowledge base second,

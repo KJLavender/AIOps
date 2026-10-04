@@ -1,5 +1,7 @@
 # GitHub digest
 
+**English** | [繁體中文](README.zh-TW.md)
+
 One image, two daily digests, each running in its own pod (`MODE`):
 
 | Pod | When | What |
