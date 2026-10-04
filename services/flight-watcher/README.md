@@ -1,5 +1,7 @@
 # Flight watcher
 
+**English** | [繁體中文](README.zh-TW.md)
+
 Watches flight prices and tells you when they drop. You change what it watches
 by typing a sentence — in the web UI or in the ntfy `flights` topic.
 
