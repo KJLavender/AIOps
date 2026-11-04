@@ -1,73 +1,26 @@
-<div align="center">
-
 # AIOps HomeLab
 
 **English** | [繁體中文](README.zh-TW.md)
 
-**A self-healing Kubernetes agent — plus the real services it keeps alive.**
+This project is a program that watches a Kubernetes cluster and fixes broken apps by itself. Kubernetes is the system that runs your apps as containers inside "pods". When a pod crashes or never becomes ready, someone normally has to read the logs and edit its settings by hand. The agent here does that: it finds the failing pod, works out the cause, patches it, checks that the fix worked, and undoes the change if it did not.
 
-Detect → Diagnose → Fix → Validate → Learn, with rules first, a knowledge base second,
-and a local LLM (that can search the web) last — wrapped in guardrails, an LLM judge,
-automatic rollback and a nightly evaluation suite.
-
-![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
-![k3s](https://img.shields.io/badge/k3s-v1.36-FFC61C?logo=k3s&logoColor=black)
-![Ollama](https://img.shields.io/badge/LLM-Ollama%20%C2%B7%20qwen3.5%3A4b-black)
-![Dependencies](https://img.shields.io/badge/agent%20runtime%20deps-none-brightgreen)
-![Tests](https://img.shields.io/badge/tests-121%20passing-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-blue)
+The repo also holds the small home lab the agent looks after: a flight price tracker, a daily GitHub digest, monitoring, and a portal page.
 
 ![Homepage portal](docs/images/portal.png)
 
-</div>
+There is a newer version, [AIOps v2](https://github.com/KJLavender/AIOps-v2). It splits this single agent into four agents that run as separate pods. Each has its own permissions, and they hand work to each other through Kubernetes custom resources. This repo still has the single-agent v1 (`deploy/agent-deployment.yaml`, set to 0 replicas) and everything around it: monitoring, portal, services and the fault lab.
 
-> **🧩 The agent now runs as four agents: [AIOps v2](https://github.com/KJLavender/AIOps-v2).**
-> monitor, diagnose, repair and validate are separate pods with separate
-> ServiceAccounts and NetworkPolicies, handing work over through Kubernetes custom
-> resources — the agent that reads the web can't touch the cluster, and the one
-> that patches can't reach the web. This repository keeps the single-agent v1
-> (`deploy/agent-deployment.yaml`, scaled to 0) and the HomeLab around it:
-> monitoring, portal, services and the fault lab.
+## What is in the repo
 
----
+- `aiops/`: the agent. Plain Python standard library plus `kubectl`, no other dependencies.
+- `services/flight-watcher/`: checks Google Flights every 3 hours and sends a phone notification when a fare hits a new low. You control it by typing sentences like "Taipei to Tokyo, March 2027, under 5,000".
+- `services/github-digest/`: every day at 09:00 it lists the top 10 new repos by stars. At 09:05 it posts research picks that match topics you set by chat.
+- `monitoring/`: Prometheus (metrics), Grafana (dashboards), Loki (logs) and Grafana Alloy (collects the logs), installed through k3s's built-in helm controller.
+- `portal/`: one Homepage dashboard that links to everything.
+- `manifests/`: seven deliberately broken Deployments, so you can watch the agent work.
+- `cluster/`, `deploy/`: resource limits, priority classes, and the agent's own manifests.
 
-## Table of contents
-
-- [What's in the box](#whats-in-the-box)
-- [Architecture](#architecture)
-- [The self-healing agent](#the-self-healing-agent)
-  - [Pipeline](#pipeline)
-  - [Built-in rules](#built-in-rules)
-  - [Web search + LLM fixes from a bounded catalog](#web-search--llm-fixes-from-a-bounded-catalog)
-  - [Decision-quality loop](#decision-quality-loop)
-  - [Knowledge base & learning](#knowledge-base--learning)
-- [Services the agent looks after](#services-the-agent-looks-after)
-- [Monitoring](#monitoring)
-- [Quick start](#quick-start)
-- [Deploy on k3s](#deploy-on-k3s)
-- [Access from your phone](#access-from-your-phone)
-- [Configuration](#configuration)
-- [Fault-simulation lab](#fault-simulation-lab)
-- [Security model](#security-model)
-- [Project layout](#project-layout)
-- [Testing](#testing)
-- [Limitations & roadmap](#limitations--roadmap)
-- [Acknowledgements](#acknowledgements)
-
----
-
-## What's in the box
-
-| | Component | What it does |
-| --- | --- | --- |
-| 🤖 | **AIOps agent** (`aiops/`) | Watches pods, diagnoses failures, patches Deployments, validates the fix, rolls back if it didn't work, and learns what worked. Pure Python stdlib + `kubectl`. |
-| 🛡️ | **Decision-quality loop** | Prompt-injection guard on web results, evidence check + LLM-as-judge before any LLM-proposed change, JSON decision records, nightly scenario simulation with prompt-variant scoring. |
-| ✈️ | **Flight watcher** (`services/flight-watcher/`) | Tracks the cheapest fares on Google Flights every 3 h and pushes deals to your phone. You control it by **typing plain sentences** ("Taipei to Tokyo, March 2027, under 5,000"). |
-| 🔥 | **GitHub digests** (`services/github-digest/`) | Daily *Top 10 new repos by stars* and daily *research picks* matched to topics you manage by chat. |
-| 📊 | **Monitoring** (`monitoring/`) | Prometheus, Grafana (stock Kubernetes dashboards + custom ones), Loki and Grafana Alloy — installed declaratively by the k3s helm-controller. |
-| 🏠 | **Portal** (`portal/`) | One Homepage dashboard for everything: live fares, today's repos, agent stats, pod status of every service. |
-| 📱 | **Phone access** | Tailscale + ntfy: open the portal and get push notifications anywhere, without exposing anything to the internet. |
-| 🧪 | **Fault lab** (`manifests/`) | Seven broken Deployments (OOM, bad image, missing env, crash loop, unschedulable, bad probe, missing ConfigMap) to watch the agent work. |
+The agent uses a local LLM (a large language model, here run by [Ollama](https://ollama.com)) as its last resort. Everything else is fixed rules.
 
 ## Architecture
 
@@ -101,7 +54,7 @@ flowchart LR
     exa[("Exa web search")]
     gflights[("Google Flights")]
     ghapi[("GitHub API")]
-    phone["📱 phone via Tailscale"]
+    phone["phone via Tailscale"]
 
     agent -- watches / patches --> cases & fw & ntfy & daily & picks
     agent --> ollama
@@ -118,102 +71,68 @@ flowchart LR
     phone --> traefik --> home & graf & fw & ntfy
 ```
 
-Every workload is its own pod with CPU/memory requests **and** limits, a
-namespace `LimitRange` as a safety net, and a `PriorityClass`
-(platform > services > fault cases) so a misbehaving service can't starve the
-monitoring stack or the agent.
+Every workload runs in its own pod with CPU and memory requests and limits. Each namespace has a `LimitRange` (default limits) as a safety net, and a `PriorityClass` ranks platform above services above fault cases. A misbehaving service therefore cannot starve monitoring or the agent.
 
----
+## How the agent works
 
-## The self-healing agent
+When a pod fails, the agent tries these steps in order and stops at the first one that gives an answer:
 
-### Pipeline
+1. Rules. Known symptoms map straight to a fix. No LLM is used.
+2. Knowledge base. A file of fixes that worked before. It looks for the same workload and symptom first, then matches keywords.
+3. Web search. It searches with [Exa](https://exa.ai) (no API key needed). IPs, pod hashes and UIDs are removed from the query first. A filter scans the results for prompt injection (text that tries to give the LLM new orders) and drops any result it flags.
+4. LLM. It reads the logs, events, pod spec and search results, then names the root cause. It may also pick one action from a short fixed list.
+5. Checks. An evidence check, a second LLM call that acts as judge, and a live test on the pod (see below).
+6. Fix. The agent applies the change with `kubectl patch`.
+7. Validate. It waits for the rollout, then for the pod to be Running, Ready and stable. If that fails, it runs `kubectl rollout undo` and does not try the same fix again.
+8. Learn. A fix that passed validation goes into the knowledge base together with the workload it worked on.
 
-```
-Pod fails
-   ↓
-Rule Engine          known symptoms → structured fix (no LLM tokens spent)
-   ↓ miss / defer
-Knowledge Base       same workload + symptom first, then keyword match
-   ↓ miss
-Web search           Exa, query stripped of IPs / pod hashes / UIDs
-   ↓ guard           prompt-injection scan drops poisoned results
-LLM analysis         logs + events + spec + web results → root cause,
-   ↓                 and optionally ONE action from a bounded catalog
-Evaluate             evidence check → LLM judge → live pre-check on the pod
-   ↓
-Remediate            kubectl patch (structured patches only)
-   ↓
-Validate             rollout + Running & Ready + stable  ──fail──► rollout undo
-   ↓
-Learn                verified fix stored with its workload, reused next time
-```
-
-The live agent dashboard (`/`, plus `/api/state` and Prometheus `/metrics`):
+The agent also serves a dashboard at `/`, with `/api/state` and Prometheus `/metrics`:
 
 ![Agent dashboard](docs/images/agent-dashboard.png)
 
 ### Built-in rules
 
-| Symptom | What the rule does | Auto-fix |
+| Symptom | What the rule does | Applies the fix itself |
 | --- | --- | --- |
-| `OOMKilled` | raise the memory limit (×2, floor 512Mi) and restart | ✅ |
-| `ImagePullBackOff` / `ErrImagePull` | tag *not found* + repo has an operator-approved fallback → swap the image; otherwise explain | ✅ allowlisted |
-| `CrashLoopBackOff` + logs name a missing env var | `X is not set`, `KeyError: 'X'`… → set the approved value; otherwise a precise recommendation | ✅ allowlisted |
-| `CrashLoopBackOff` (other) | collect logs/events, hand to KB / web search / LLM | advisory |
-| `CreateContainerConfigError` | name the missing ConfigMap / Secret | advisory |
-| `Pending` | explain the scheduling failure (resources, selector, taint, PVC) | advisory |
-| `NotReady` | quote the latest readiness-probe failure, hand to KB / web / LLM | via catalog |
+| `OOMKilled` | Doubles the memory limit (at least 512Mi) and restarts | yes |
+| `ImagePullBackOff` / `ErrImagePull` | If the tag does not exist and you approved a fallback image for that repo, swaps the image. Otherwise explains | only approved images |
+| `CrashLoopBackOff`, logs name a missing env var | If you approved a value for that variable, sets it. Otherwise gives a precise recommendation | only approved values |
+| `CrashLoopBackOff`, other | Collects logs and events, passes them on to the knowledge base, web search and LLM | no |
+| `CreateContainerConfigError` | Names the missing ConfigMap or Secret | no |
+| `Pending` | Explains why scheduling failed (resources, selector, taint, volume) | no |
+| `NotReady` | Quotes the latest readiness probe failure, passes it on | through the action list |
 
-The agent never *guesses* an image tag or an environment value: only values an
-operator approved (`AIOPS_IMAGE_FALLBACKS`, `AIOPS_ENV_DEFAULTS`) are applied.
-New pods get a grace period before `Pending` / `ContainerCreating` / `NotReady`
-count as failures.
+The agent never guesses an image tag or an environment value. It only applies values you approved in `AIOPS_IMAGE_FALLBACKS` and `AIOPS_ENV_DEFAULTS`. A new pod gets a grace period before `Pending`, `ContainerCreating` or `NotReady` counts as a failure.
 
-### Web search + LLM fixes from a bounded catalog
+### What the LLM is allowed to do
 
-For failures no rule or KB entry solves, the LLM may name **one action** — it
-never writes a patch. The action validates its parameters against the live
-Deployment and builds the patch itself:
+The LLM never writes a patch. It can only name one action from this list. The agent checks the action's parameters against the live Deployment and builds the patch itself.
 
-| Symptom | Allowed actions | Guard rails |
+| Symptom | Allowed actions | Limits |
 | --- | --- | --- |
-| `NotReady` | `set_readiness_probe_path`, `rollout_restart` | plain URL path, different from the failing one, **must answer 2xx/3xx on the pod before it's applied** |
-| `Pending` | `lower_requests` | may only lower existing requests |
-| `OOMKilled` | `set_memory_limit` | must increase, capped by `AIOPS_MAX_MEMORY` |
+| `NotReady` | `set_readiness_probe_path`, `rollout_restart` | The path must be a plain URL path, different from the failing one. It must return 2xx or 3xx on the pod before it is applied |
+| `Pending` | `lower_requests` | Can only lower existing requests |
+| `OOMKilled` | `set_memory_limit` | Can only raise it, up to `AIOPS_MAX_MEMORY` |
 
-Anything else the model suggests — a new image, a privileged sidecar, a shell
-command — has no action to map onto and stays a recommendation. A fix that fails
-validation is rolled back with `kubectl rollout undo` and never retried.
+Anything else the model suggests, such as a new image or a shell command, has no matching action. It stays a recommendation.
 
-> **Real run:** an nginx Deployment whose readiness probe hit `/healthz` (404).
-> The agent searched the web, the LLM picked `set_readiness_probe_path` → `/index.html`,
-> the pre-check confirmed the pod serves it, the pod went Ready, and the fix was
-> learned. Breaking it again was repaired straight from the knowledge base.
+A real run: an nginx Deployment had a readiness probe on `/healthz`, which returned 404. The agent searched the web, the LLM picked `set_readiness_probe_path` with `/index.html`, the pre-check confirmed the pod serves that path, and the pod became Ready. The fix was saved. When the same fault was created again, the knowledge base fixed it without the LLM.
 
-### Decision-quality loop
+### Checks on LLM suggestions
 
-Inspired by [future-agi](https://github.com/future-agi/future-agi)'s
-*simulate → evaluate → protect → monitor → optimize* loop, implemented natively
-(no extra services):
+The method follows the "simulate, evaluate, protect, monitor, optimize" loop from [future-agi](https://github.com/future-agi/future-agi). It is written from scratch here and needs no extra service.
 
-| Step | Implementation |
-| --- | --- |
-| **Protect** — `aiops/guard.py` | scanners for instruction overrides, role hijacks, agent directives and remote-exec patterns; a flagged search result is dropped whole before the LLM sees it |
-| **Evaluate** — `aiops/judge.py` | deterministic evidence check per action (a probe-path change needs a probe failure in the events, a memory raise needs an OOM kill…), then a second LLM call grades *grounded / fits / safe* using **cluster evidence only** — a poisoned web page can't vouch for itself |
-| **Monitor** | one JSON `decision` log line per LLM-assisted issue: query, guard flags, LLM answer, judge scores, pre-check, outcome → Loki → Grafana |
-| **Simulate** — `aiops/simulate.py` | 7 frozen scenarios (incl. a poisoned search result, misleading advice, a wrong-port probe, a slow app) replayed through the real decision path against a fake cluster; CronJob `aiops-eval` runs nightly and pushes a summary |
-| **Optimize** | every prompt variant is scored side by side; `AIOPS_PROMPT_VARIANT` picks the winner |
+- Protect (`aiops/guard.py`): scans search results for instruction overrides, role hijacks, orders aimed at the agent, and remote-execution patterns. A flagged result is dropped whole.
+- Evaluate (`aiops/judge.py`): first a fixed check that the action matches the evidence (a probe path change needs a probe failure in the events, a memory raise needs an OOM kill). Then a second LLM call scores whether the answer is grounded, fits the problem and is safe. The judge sees only cluster evidence, so a poisoned web page cannot vouch for itself.
+- Monitor: each LLM-assisted issue writes one JSON `decision` log line (query, guard flags, LLM answer, judge scores, pre-check, outcome). It goes to Loki and shows in Grafana.
+- Simulate (`aiops/simulate.py`): 7 fixed scenarios, including a poisoned search result, misleading advice, a probe on the wrong port and a slow app. They run through the real decision code against a fake cluster. The `aiops-eval` CronJob runs them every night at 03:30 and pushes a summary to ntfy.
+- Optimize: every prompt variant is scored side by side. Set `AIOPS_PROMPT_VARIANT` to the winner.
 
-Current results with `qwen3.5:4b`: **7/7 scenarios, 0 unsafe changes**.
-The judge is the weakest layer on a small model (it once approved an invented
-path) — the pod-level pre-check caught it, which is exactly why the layers stack.
+With `qwen3.5:4b` the latest result is 7 of 7 scenarios passed and 0 unsafe changes. The judge is the weakest layer on a small model. It once approved a path the model made up, and the pod pre-check caught it. That is why the checks are stacked.
 
-### Knowledge base & learning
+### Knowledge base
 
-Structured records only, never free-form Q&A. Only fixes that were applied
-**and** validated are stored, together with the workload they were verified on,
-so an image or env fix learned for one Deployment never leaks onto another.
+The knowledge base stores structured records only, never free-form Q&A. A fix is stored only after it was applied and passed validation, together with the workload it was verified on. A fix learned for one Deployment is therefore never applied to another. In the cluster the file lives on a PersistentVolumeClaim, so it survives restarts.
 
 ```json
 {
@@ -227,290 +146,217 @@ so an image or env fix learned for one Deployment never leaks onto another.
 }
 ```
 
-In-cluster, the KB lives on a PVC so learned fixes survive restarts.
+## The services the agent looks after
 
----
-
-## Services the agent looks after
-
-### ✈️ Flight watcher
+### Flight watcher
 
 ![Flight watcher](docs/images/flights.png)
 
-- Google Flights data via [`fli`](https://github.com/punitarani/fli) (no API key).
-  Each check finds the cheapest day in the route's date window, then names that
-  day's cheapest flight.
-- Checks every 3 h; pushes **only** on a new low (≥ 3 % below the previous low)
-  or when a target price is crossed — no spam.
-- Control it by typing in the web UI or the ntfy `flights` topic. A local LLM
-  parses free text; a deterministic parser backs it up and owns dates/prices.
+It reads Google Flights data through [`fli`](https://github.com/punitarani/fli), which needs no API key. Each check finds the cheapest day in the route's date window, then the cheapest flight on that day. It checks every 3 hours and sends a notification only when the price is a new low (at least 3% below the previous low) or drops under your target price.
 
-| You type | Effect |
+You control it by typing in its web page or in the ntfy topic `flights`. The local LLM reads the free text, and a fixed parser backs it up and has the final say on dates and prices.
+
+| You type | What happens |
 | --- | --- |
-| `台北到東京` / `Taipei to Tokyo` | start watching a route (rolling window 7–90 days) |
+| `台北到東京` or `Taipei to Tokyo` | Starts watching a route (rolling window of 7 to 90 days) |
 | `高雄飛大阪 12月 來回5天 5000以下 直飛` | December, 5-day round trip, target NT$5,000, non-stop |
-| `2027/3月` (after a route) | follow-up: same route, March 2027 |
-| `只追蹤台北到首爾` | replace all routes (destructive, so it needs the explicit 只 "only") |
-| `列表` · `立即查詢` · `刪除 #2` · `#1 目標 4000` | list · check now · stop · set target |
+| `2027/3月` (after a route) | Same route, March 2027 |
+| `只追蹤台北到首爾` | Replaces all routes. This deletes data, so you must write 只 ("only") |
+| `列表`, `立即查詢`, `刪除 #2`, `#1 目標 4000` | List, check now, stop watching, set target price |
 
-### 🔥 GitHub digests
+### GitHub digests
 
 ![Research picks](docs/images/picks.png)
 
-| Pod | When | What |
-| --- | --- | --- |
-| `github-daily` | 09:00 | Top 10 repos **created in the last 24 h** by stars, with a one-line summary; star-farmed malware lures (cheats, cracks, "free download" tools, code-less repos) are filtered out |
-| `repo-picks` | 09:05 | 5 never-repeated repos matching your research topics, each with *why it matters*; topics are managed by chat (`新增主題 eBPF`, `主題`, `刪除主題 #2`) |
+`github-daily` runs at 09:00. It takes repos created in the last 24 hours, ranks them by stars, keeps the top 10 and adds a one-line summary. Repos that look like malware bait (cheats, cracks, "free download" tools, repos with no code) are filtered out.
 
-### 📣 Notifications
+`repo-picks` runs at 09:05. It picks 5 repos that match your research topics and have not been shown before, and says why each is worth a look. You manage topics by chat: `新增主題 eBPF`, `主題`, `刪除主題 #2`.
 
-Self-hosted [ntfy](https://ntfy.sh): topics `flights`, `github-daily`,
-`repo-picks` and `aiops` (nightly evaluation). On iOS, ntfy asks ntfy.sh to send
-an APNs *poll* (topic hash + message id only) so notifications arrive while the
-app is closed; message content never leaves your network.
+### Notifications
 
----
+Notifications go through [ntfy](https://ntfy.sh), which you host yourself. The topics are `flights`, `github-daily`, `repo-picks` and `aiops` (the nightly evaluation). On iOS, ntfy asks ntfy.sh to send an APNs poll (only a topic hash and a message id), so notifications arrive while the app is closed. The message text stays on your network.
 
 ## Monitoring
 
 ![AIOps Grafana dashboard](docs/images/grafana-aiops.png)
 
-- **kube-prometheus-stack**: Prometheus (7-day retention), Grafana with the stock
-  Kubernetes dashboards, node-exporter, kube-state-metrics.
-- **Loki** (Monolithic, filesystem on a PVC, 7-day retention) and **Grafana Alloy**
-  shipping every pod's logs plus Kubernetes events (Promtail is EOL).
-- Custom dashboards, generated by `monitoring/dashboards/generate.py`:
-  - **AIOps Agent** — pods not ready, validated fixes, rollbacks, learned fixes,
-    pipeline events, restart leaders, agent log, warning events, judge/guard
-    counters, decision records, nightly simulation results.
-  - **Flight Deals** — current fare per route, fare history, routes table,
-    checks and chat commands.
-  - **Logs** — pick a namespace and service, type a search term: browse Loki
-    without Explore (anonymous viewers can't use Explore).
-- Grafana is read-only without login (anonymous *Viewer*); its home dashboard is
-  set to **AIOps v2** (`PUT /api/org/preferences {"homeDashboardUID": "aiops-v2"}`).
+- kube-prometheus-stack: Prometheus (7 days of data), Grafana with the standard Kubernetes dashboards, node-exporter and kube-state-metrics.
+- Loki (single binary, files on a volume, 7 days of data) and Grafana Alloy, which ships every pod's logs and the Kubernetes events to Loki.
+- Three custom dashboards, generated by `monitoring/dashboards/generate.py`. "AIOps Agent" shows failing pods, validated fixes, rollbacks, learned fixes, judge and guard counts, decision records and the nightly results. "Flight Deals" shows prices and routes. "Logs" lets you pick a namespace and service and search Loki without opening Explore, which anonymous viewers cannot use.
+- Grafana is read-only for anyone, with no login (anonymous Viewer).
 
 ![Flight deals Grafana dashboard](docs/images/grafana-flights.png)
 
 Every service exposes Prometheus metrics and has a `ServiceMonitor`.
 
----
-
-## Quick start
-
-No cluster needed to look around:
+## Try it without a cluster
 
 ```bash
 git clone https://github.com/KJLavender/AIOps.git
 cd AIOps
 pip install pytest
 pytest -q                               # 121 tests, no network or cluster needed
-
 python -m aiops --demo --dashboard      # agent against a built-in fake cluster
 # open http://localhost:8080
 ```
 
-Against a real cluster (any `kubectl` context):
+Against a real cluster (any `kubectl` context works):
 
 ```bash
-python -m aiops --once --dry-run        # one scan, change nothing
-python -m aiops --no-auto-fix           # keep watching, recommendations only
-python -m aiops --dashboard             # full self-healing loop + dashboard
+python -m aiops --once --dry-run        # scan once, change nothing
+python -m aiops --no-auto-fix           # keep watching, only give recommendations
+python -m aiops --dashboard             # full self-healing loop plus dashboard
 ```
 
 ## Deploy on k3s
 
-Tested on a single-node k3s inside WSL2 (Ubuntu) with an 8 GB GPU for Ollama.
+k3s is a small Kubernetes. This was tested on a single-node k3s inside WSL2 (Ubuntu), with an 8 GB GPU for Ollama.
 
-**1. Prerequisites**
+1. Install k3s, `kubectl`, Docker (to build images) and [Ollama](https://ollama.com), then pull the model: `ollama pull qwen3.5:4b`. In `deploy/ollama-endpoint.yaml`, set the IP to your node's IP. This makes the in-cluster name `ollama` point at the host.
 
-- k3s, `kubectl`, Docker (to build images), [Ollama](https://ollama.com) with a model:
-  `ollama pull qwen3.5:4b`
-- `deploy/ollama-endpoint.yaml` points the in-cluster name `ollama` at the
-  host — set the IP to your node's.
+2. Point the hostnames at your network. Ingresses answer on `*.localhost` (this machine) and on `<name>.<ip-with-dashes>.sslip.io`. sslip.io is a public DNS service that resolves a name containing an IP to that IP. It is used for phone access over Tailscale. Replace the example IP with yours:
 
-**2. Point hostnames at your network**
+   ```bash
+   NEW=100-64-0-1   # your Tailscale or LAN IP, dots replaced by dashes
+   grep -rl USER-TAILSCALE-IP deploy portal monitoring services | xargs sed -i "s/USER-TAILSCALE-IP/$NEW/g"
+   sed -i "s/USER\.TAILSCALE\.IP/${NEW//-/.}/g" portal/homepage.yaml
+   ```
 
-Ingresses answer on `*.localhost` (this machine) and on
-`<name>.<ip-with-dashes>.sslip.io` (a public wildcard DNS that resolves to the IP
-inside the name — used for phone access via Tailscale). Replace the example IP
-with yours:
+3. Build the images and import them. k3s has its own containerd, so Docker's images are not visible to it.
 
-```bash
-NEW=100-64-0-1   # your Tailscale (or LAN) IP, dots replaced by dashes
-grep -rl USER-TAILSCALE-IP deploy portal monitoring services | xargs sed -i "s/USER-TAILSCALE-IP/$NEW/g"
-sed -i "s/USER\.TAILSCALE\.IP/${NEW//-/.}/g" portal/homepage.yaml
-```
+   ```bash
+   docker build -t aiops-agent:local .
+   docker build -t flight-watcher:local services/flight-watcher
+   docker build -t github-digest:local services/github-digest
+   for img in aiops-agent flight-watcher github-digest; do
+     docker save $img:local | sudo k3s ctr images import -
+   done
+   ```
 
-**3. Build and import images** (k3s uses its own containerd)
+4. Apply the manifests:
 
-```bash
-docker build -t aiops-agent:local .
-docker build -t flight-watcher:local services/flight-watcher
-docker build -t github-digest:local services/github-digest
-for img in aiops-agent flight-watcher github-digest; do
-  docker save $img:local | sudo k3s ctr images import -
-done
-```
+   ```bash
+   kubectl create namespace monitoring
+   kubectl apply -f manifests/00-namespace.yaml -f services/flight-watcher/k8s/00-namespace.yaml
+   kubectl apply -f cluster/                                    # priority classes, LimitRanges
+   kubectl -n monitoring create secret generic grafana-admin \
+     --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -base64 18)"
+   kubectl apply -f monitoring/ && kubectl apply -f monitoring/dashboards/
+   kubectl apply -f manifests/                                  # optional: the fault lab
+   kubectl apply -f services/flight-watcher/k8s/ -f services/github-digest/k8s/
+   kubectl apply -f deploy/
+   kubectl apply -f portal/
+   ```
 
-**4. Apply**
+Open http://localhost:8000. The portal links to everything else.
 
-```bash
-kubectl create namespace monitoring
-kubectl apply -f manifests/00-namespace.yaml -f services/flight-watcher/k8s/00-namespace.yaml
-kubectl apply -f cluster/                                    # priority classes, LimitRanges
-kubectl -n monitoring create secret generic grafana-admin \
-  --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -base64 18)"
-kubectl apply -f monitoring/ && kubectl apply -f monitoring/dashboards/
-kubectl apply -f manifests/                                  # optional: the fault lab
-kubectl apply -f services/flight-watcher/k8s/ -f services/github-digest/k8s/
-kubectl apply -f deploy/
-kubectl apply -f portal/
-```
+Notes for WSL2. Traefik runs on the host network, because WSL2 "mirrored" networking only forwards Windows `localhost` to sockets that are really listening. node-exporter's root filesystem mount is turned off, because `/` is not a shared mount on WSL2. Set `instanceIdleTimeout=-1` in `.wslconfig`, or WSL stops the distro (and k3s) when no terminal is open.
 
-Open **http://localhost:8000** — the portal links to everything else.
+`deploy/agent-deployment.yaml` sets `replicas: 0`, so the v1 agent does not run until you scale it up. The LLM, web search and LLM auto-fix are all off by default. Turn them on with the variables below.
 
-> **WSL2 notes.** Traefik runs on the host network because WSL2 *mirrored*
-> networking only forwards Windows `localhost` to real listening sockets.
-> node-exporter's root-fs mount is disabled (`/` isn't a shared mount on WSL2).
-> Set `instanceIdleTimeout=-1` in `.wslconfig` so the distro (and k3s) isn't
-> stopped when no terminal is open.
+### Use it from your phone
 
-## Access from your phone
+1. Install [Tailscale](https://tailscale.com) inside WSL (`tailscale up --accept-dns=false`) and on your phone, signed in to the same account.
+2. On the phone, open `http://home.<your-ip-dashed>.sslip.io:8000` and choose "Add to Home Screen".
+3. In the ntfy app, add the server `http://ntfy.<your-ip-dashed>.sslip.io:8000` and subscribe to `flights`, `github-daily`, `repo-picks` and `aiops`.
 
-1. Install [Tailscale](https://tailscale.com) inside WSL (`tailscale up --accept-dns=false`)
-   and on your phone, same account.
-2. Open `http://home.<your-ip-dashed>.sslip.io:8000` on the phone and *Add to Home
-   Screen* — the portal becomes an app-like icon.
-3. In the ntfy app, add the server `http://ntfy.<your-ip-dashed>.sslip.io:8000`
-   and subscribe to `flights`, `github-daily`, `repo-picks`, `aiops`.
+Nothing is published to the internet. Only devices signed in to your Tailscale network can reach these addresses.
 
-Nothing is published to the internet: only devices signed into your tailnet can
-reach these addresses.
+## Settings
 
----
-
-## Configuration
-
-<details>
-<summary><b>Agent environment variables</b> (click to expand)</summary>
+The agent reads these environment variables.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `AIOPS_ALL_NAMESPACES` | `true` | watch every namespace |
-| `AIOPS_NAMESPACES` | `default` | comma list when not watching all |
-| `AIOPS_POLL_INTERVAL` | `15` | scan interval (s) |
-| `AIOPS_AUTO_FIX` | `true` | apply structured patches |
-| `AIOPS_DRY_RUN` | `false` | diagnose without patching |
-| `AIOPS_DEFAULT_MEMORY` / `AIOPS_MEMORY_SCALE` | `512Mi` / `2.0` | OOM memory floor / multiplier |
-| `AIOPS_IMAGE_FALLBACKS` | – | approved images, `repo=image,...` |
-| `AIOPS_ENV_DEFAULTS` | – | approved env values, `VAR=value,...` |
-| `AIOPS_NOT_READY_GRACE` / `AIOPS_PENDING_GRACE` | `120` / `60` | seconds before NotReady / Pending count |
-| `AIOPS_VALIDATION_TIMEOUT` / `AIOPS_STABILITY` | `300` / `60` | rollout wait / stability window (s) |
-| `AIOPS_LLM_ENABLED` | `false` | enable the Ollama layer |
-| `AIOPS_OLLAMA_ENDPOINT` / `AIOPS_OLLAMA_MODEL` | `http://localhost:11434` / `llama3` | Ollama URL / model |
-| `AIOPS_LLM_MIN_CONFIDENCE` | `0.6` | drop LLM answers below this |
-| `AIOPS_LLM_NUM_CTX` | `8192` | context window (Ollama's default silently truncates long prompts) |
-| `AIOPS_WEB_SEARCH` | `false` | search the web for unknown failures |
-| `AIOPS_LLM_AUTO_FIX` | `false` | let the LLM pick a catalog action |
-| `AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE` | `0.7` | confidence needed to apply it |
-| `AIOPS_JUDGE` / `AIOPS_JUDGE_MIN_SCORE` / `AIOPS_JUDGE_MODEL` | `true` / `0.7` / same model | LLM judge |
-| `AIOPS_ACTION_PRECHECK` | `true` | probe a proposed readiness path on the pod first |
-| `AIOPS_ROLLBACK` | `true` | `rollout undo` when validation fails |
-| `AIOPS_MAX_MEMORY` | `2Gi` | cap for LLM-proposed memory raises |
-| `AIOPS_PROMPT_VARIANT` | `default` | prompt variant chosen by the simulation |
-| `AIOPS_KB_PATH` | `data/knowledge_base.jsonl` | KB file |
-| `AIOPS_DASHBOARD_HOST` / `AIOPS_DASHBOARD_PORT` | `127.0.0.1` / `8080` | dashboard bind |
+| `AIOPS_ALL_NAMESPACES` | `true` | Watch every namespace |
+| `AIOPS_NAMESPACES` | `default` | Comma-separated list, used when not watching all |
+| `AIOPS_POLL_INTERVAL` | `15` | Seconds between scans |
+| `AIOPS_AUTO_FIX` | `true` | Apply structured patches |
+| `AIOPS_DRY_RUN` | `false` | Diagnose only, do not patch |
+| `AIOPS_DEFAULT_MEMORY` / `AIOPS_MEMORY_SCALE` | `512Mi` / `2.0` | Minimum memory limit and multiplier after an OOM |
+| `AIOPS_IMAGE_FALLBACKS` | none | Approved images, `repo=image,...` |
+| `AIOPS_ENV_DEFAULTS` | none | Approved env values, `VAR=value,...` |
+| `AIOPS_NOT_READY_GRACE` / `AIOPS_PENDING_GRACE` | `120` / `60` | Seconds before NotReady or Pending counts as a failure |
+| `AIOPS_VALIDATION_TIMEOUT` / `AIOPS_STABILITY` | `300` / `60` | Seconds to wait for the rollout, and for it to stay stable |
+| `AIOPS_LLM_ENABLED` | `false` | Turn on the Ollama step |
+| `AIOPS_OLLAMA_ENDPOINT` / `AIOPS_OLLAMA_MODEL` | `http://localhost:11434` / `llama3` | Ollama address and model |
+| `AIOPS_LLM_MIN_CONFIDENCE` | `0.6` | LLM answers below this are dropped |
+| `AIOPS_LLM_NUM_CTX` | `8192` | Context window. Ollama's default quietly cuts long prompts |
+| `AIOPS_WEB_SEARCH` | `false` | Search the web for unknown failures |
+| `AIOPS_LLM_AUTO_FIX` | `false` | Let the LLM pick an action from the list |
+| `AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE` | `0.7` | Confidence needed to apply that action |
+| `AIOPS_JUDGE` / `AIOPS_JUDGE_MIN_SCORE` / `AIOPS_JUDGE_MODEL` | `true` / `0.7` / same model | The LLM judge |
+| `AIOPS_ACTION_PRECHECK` | `true` | Test a proposed readiness path on the pod first |
+| `AIOPS_ROLLBACK` | `true` | Run `rollout undo` when validation fails |
+| `AIOPS_MAX_MEMORY` | `2Gi` | Cap on memory raises proposed by the LLM |
+| `AIOPS_PROMPT_VARIANT` | `default` | Prompt variant picked by the simulation |
+| `AIOPS_KB_PATH` | `data/knowledge_base.jsonl` | Knowledge base file |
+| `AIOPS_DASHBOARD_HOST` / `AIOPS_DASHBOARD_PORT` | `127.0.0.1` / `8080` | Where the dashboard listens |
 
-</details>
+The two services have their own settings, described in [`services/flight-watcher/README.md`](services/flight-watcher/README.md) and [`services/github-digest/README.md`](services/github-digest/README.md).
 
-Service settings are documented in
-[`services/flight-watcher/README.md`](services/flight-watcher/README.md) and
-[`services/github-digest/README.md`](services/github-digest/README.md).
+## Fault lab
 
-## Fault-simulation lab
+These Deployments in `manifests/` are broken on purpose.
 
-| Manifest | Fault | What the agent does |
+| Manifest | The fault | What the agent does |
 | --- | --- | --- |
-| `case1-crashloop` | `exit 1` loop | explains; no safe automatic fix exists |
-| `case2-oomkilled` | 64Mi limit, 150MiB allocation | raises memory → validates → learns |
-| `case3-imagepull` | `nginx:notfound` | swaps to the approved fallback image |
-| `case4-missing-env` | `DB_HOST` unset | sets the approved value |
-| `case5-pending` | requests 256Gi | explains the scheduling failure |
-| `case6-readiness` | probe on a path nginx doesn't serve | web search + LLM → verified probe-path fix |
-| `case7-missing-configmap` | env from a missing ConfigMap | names the missing ConfigMap |
+| `case1-crashloop` | Loops on `exit 1` | Explains. There is no safe automatic fix |
+| `case2-oomkilled` | 64Mi limit, allocates 150MiB | Raises memory, validates, learns |
+| `case3-imagepull` | `nginx:notfound` | Swaps to the approved fallback image |
+| `case4-missing-env` | `DB_HOST` not set | Sets the approved value |
+| `case5-pending` | Requests 256Gi | Explains why it cannot be scheduled |
+| `case6-readiness` | Probe on a path nginx does not serve | Web search and LLM, then a verified probe path fix |
+| `case7-missing-configmap` | Env comes from a ConfigMap that does not exist | Names the missing ConfigMap |
 
----
+## Security
 
-## Security model
+This is a home lab project. It is built to be safe on a private network, not hardened for the public internet.
 
-This is a **HomeLab** project. It's built to be safe on a private network, not
-hardened for the public internet.
+- No secrets are in the repo. Grafana's admin password lives in a Kubernetes Secret you create. The Exa endpoint needs no key. The GitHub API is used without login, and an optional `GITHUB_TOKEN` is read from the environment.
+- The web pages (portal, flight watcher, digests, ntfy, read-only Grafana) have no login. They are reachable only from the node itself (`*.localhost`) and from devices on your Tailscale network. Do not expose them through a public Ingress, NodePort or tunnel without adding authentication first.
+- The agent has namespaced `Role`s only. It can read pods, logs and events, and get and patch Deployments and ReplicaSets in the namespaces it watches.
+- LLM output is not trusted. Free text is never executed. Only actions from the list, with checked parameters, become patches, and they pass the evidence check, the judge, the live pre-check, validation and rollback.
+- Third-party charts and images are pinned to explicit versions.
 
-- **No secrets in the repository.** Grafana's admin password lives in a
-  Kubernetes Secret you create; the Exa endpoint needs no key; the GitHub API is
-  used unauthenticated (an optional `GITHUB_TOKEN` is read from the environment).
-- **Private by design.** The web UIs (portal, flight watcher, digests, ntfy,
-  Grafana read-only) have no login of their own. They are reachable only from
-  the node (`*.localhost`) and from devices on your Tailscale tailnet.
-  **Do not expose them with a public Ingress, NodePort or tunnel** without adding
-  authentication first.
-- **Least-privilege agent.** Namespaced `Role`s: read pods/logs/events, and
-  get/patch Deployments and ReplicaSets only in the namespaces it watches.
-- **LLM output is untrusted.** Free text is never executed; only catalog actions
-  with validated parameters become patches, gated by evidence checks, a judge, a
-  live pre-check, validation and rollback. Web results are scanned for prompt
-  injection before the model sees them.
-- **Supply chain.** Third-party charts and images are pinned to explicit
-  versions.
-
-Found a security issue? Please open a private advisory rather than a public issue.
+If you find a security problem, please open a private security advisory instead of a public issue.
 
 ## Project layout
 
 ```
-aiops/                    self-healing agent (stdlib only)
+aiops/                    the agent (standard library only)
   rules/  knowledge_base/  llm/
   actions.py  guard.py  judge.py  websearch.py  simulate.py  scenarios.json
 deploy/                   agent: RBAC, PVC, Deployment, Ingress, metrics, eval CronJob
-cluster/                  PriorityClasses + LimitRanges
-monitoring/               Prometheus / Grafana / Loki / Alloy (k3s HelmChart) + dashboards
+cluster/                  PriorityClasses and LimitRanges
+monitoring/               Prometheus, Grafana, Loki, Alloy (k3s HelmChart) and dashboards
 portal/                   Homepage
 services/flight-watcher/  fare tracker (code, Dockerfile, k8s, tests)
 services/github-digest/   daily GitHub digests (code, Dockerfile, k8s, tests)
-manifests/                fault-simulation lab
+manifests/                the fault lab
 docs/images/              screenshots
 WORKSPACE.md              detailed development notes (Traditional Chinese)
 ```
 
-## Testing
+## Tests
 
 ```bash
-pytest -q                                 # all 121 tests (agent + both services)
+pytest -q                                                    # 121 tests: agent and both services
 python -m aiops.simulate --variants default,evidence-first   # needs Ollama
 ```
 
-The unit tests use fakes for the cluster, Ollama and external APIs, so they run
-offline in about a second.
+The unit tests use fakes for the cluster, Ollama and outside APIs, so they run offline in about a second.
 
-## Limitations & roadmap
+## Limitations
 
-- Single-node HomeLab; the KB is a JSONL file with keyword scoring.
-- A 4B judge is lenient — the deterministic layers carry the safety weight.
-- The flight data source is an unofficial Google API: keep the interval generous.
-- Next: vector KB, OpenTelemetry traces for LLM calls, more catalog actions
-  (probe timeouts, startup probes), and splitting the agent into
-  monitoring / diagnosis / repair / validation roles.
+- Single-node home lab. The knowledge base is a JSONL file with keyword scoring.
+- A 4B-parameter judge is lenient. The fixed checks carry most of the safety.
+- The flight data comes from an unofficial Google API. Keep the check interval generous.
+- Not built yet: a vector knowledge base, OpenTelemetry traces for LLM calls, and more actions (probe timeouts, startup probes). Splitting the agent into separate roles was done in [AIOps v2](https://github.com/KJLavender/AIOps-v2).
 
-## Acknowledgements
+## Thanks
 
-[k3s](https://k3s.io) · [Ollama](https://ollama.com) / Qwen ·
-[Exa](https://exa.ai) · [future-agi](https://github.com/future-agi/future-agi)
-(method for the decision-quality loop) · [fli](https://github.com/punitarani/fli) ·
-[ntfy](https://ntfy.sh) · [Homepage](https://gethomepage.dev) ·
-[Grafana](https://grafana.com), [Loki](https://grafana.com/oss/loki/),
-[Alloy](https://grafana.com/oss/alloy/), [Prometheus](https://prometheus.io) ·
-[Tailscale](https://tailscale.com) · [sslip.io](https://sslip.io)
+[k3s](https://k3s.io), [Ollama](https://ollama.com) and Qwen, [Exa](https://exa.ai), [future-agi](https://github.com/future-agi/future-agi) (method for the decision-quality loop), [fli](https://github.com/punitarani/fli), [ntfy](https://ntfy.sh), [Homepage](https://gethomepage.dev), [Grafana](https://grafana.com), [Loki](https://grafana.com/oss/loki/), [Alloy](https://grafana.com/oss/alloy/), [Prometheus](https://prometheus.io), [Tailscale](https://tailscale.com), [sslip.io](https://sslip.io).
 
 ## License
 
