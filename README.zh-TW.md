@@ -214,7 +214,7 @@ k3s 是輕量版的 Kubernetes。這套在 WSL2（Ubuntu）裡的單節點 k3s �
 
 1. 安裝 k3s、`kubectl`、Docker（建 image 用）和 [Ollama](https://ollama.com)，再下載模型：`ollama pull qwen3.5:4b`。把 `deploy/ollama-endpoint.yaml` 裡的 IP 改成你節點的 IP，叢集內的名稱 `ollama` 才會指到主機。
 
-2. 把主機名稱指向你的網路。Ingress 會回應 `*.localhost`（本機）和 `<name>.<ip-with-dashes>.sslip.io`。sslip.io 是公開的 DNS 服務，名稱裡有 IP 的網域會直接解析成那個 IP，這裡拿來讓手機透過 Tailscale 連進來。把範例 IP 換成你的：
+2. 把主機名稱指向你的網路。Ingress 會回應 `*.localhost`（本機）和 `<name>.<ip-with-dashes>.sslip.io`。sslip.io 是公開的 DNS 服務，名稱裡有 IP 的網域會直接解析成那個 IP，這裡拿來讓手機透過 Tailscale 連進來。設定檔裡的 IP 都用佔位字串 `USER-TAILSCALE-IP`（`portal/homepage.yaml` 裡還有 `USER.TAILSCALE.IP`），套用之前先換成你的 IP：
 
    ```bash
    NEW=100-64-0-1   # 你的 Tailscale 或區網 IP，點換成減號

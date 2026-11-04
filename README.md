@@ -214,7 +214,7 @@ k3s is a small Kubernetes. This was tested on a single-node k3s inside WSL2 (Ubu
 
 1. Install k3s, `kubectl`, Docker (to build images) and [Ollama](https://ollama.com), then pull the model: `ollama pull qwen3.5:4b`. In `deploy/ollama-endpoint.yaml`, set the IP to your node's IP. This makes the in-cluster name `ollama` point at the host.
 
-2. Point the hostnames at your network. Ingresses answer on `*.localhost` (this machine) and on `<name>.<ip-with-dashes>.sslip.io`. sslip.io is a public DNS service that resolves a name containing an IP to that IP. It is used for phone access over Tailscale. Replace the example IP with yours:
+2. Point the hostnames at your network. Ingresses answer on `*.localhost` (this machine) and on `<name>.<ip-with-dashes>.sslip.io`. sslip.io is a public DNS service that resolves a name containing an IP to that IP. It is used for phone access over Tailscale. The files use the placeholder `USER-TAILSCALE-IP` (and `USER.TAILSCALE.IP` in `portal/homepage.yaml`); replace it with your IP before applying:
 
    ```bash
    NEW=100-64-0-1   # your Tailscale or LAN IP, dots replaced by dashes
