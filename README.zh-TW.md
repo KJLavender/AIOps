@@ -123,12 +123,20 @@ LLM 從不自己寫 patch。它只能從下面的清單挑一個動作，由 age
 這套做法參考 [future-agi](https://github.com/future-agi/future-agi) 的「模擬、評估、防護、監控、最佳化」迴圈，在這裡自己實作，不需要額外的服務。
 
 - 防護（`aiops/guard.py`）：掃描搜尋結果裡的「覆寫指令」、「角色劫持」、「對 agent 下指令」和遠端執行這幾類樣式。被標記的結果整筆丟掉。
-- 評估（`aiops/judge.py`）：先做固定的證據檢查，看動作是否對得上證據（改 probe 路徑，events 裡要有 probe 失敗；調高記憶體，要有 OOM kill）。再用第二次 LLM 呼叫評分：答案有沒有根據、合不合問題、安不安全。評審只看叢集內的證據，所以被汙染的網頁沒辦法替自己背書。
+- 評估（`aiops/judge.py`）：先做固定的證據檢查，看動作是否對得上證據（改 probe 路徑，events 裡要有 probe 失敗；調高記憶體，要有 OOM kill），而且證據裡不能有排除這個動作的訊號（最新一次 probe 失敗是「connection refused」時不准重啟，因為那個 port 根本沒有程式在聽）。這部分是單純的程式判斷，就算關掉評審也會執行。再用第二次 LLM 呼叫評分：答案有沒有根據、合不合問題、安不安全。評審只看叢集內的證據，所以被汙染的網頁沒辦法替自己背書。
 - 監控：每個有 LLM 參與的問題寫一行 JSON `decision` log，內容有查詢、防護標記、LLM 回答、評審分數、預檢和結果。它會進 Loki，在 Grafana 上看得到。
 - 模擬（`aiops/simulate.py`）：7 個固定情境，包含被汙染的搜尋結果、誤導的建議、port 錯的 probe 和很慢的 app。它們在假叢集上走真正的決策程式。CronJob `aiops-eval` 每晚 03:30 跑一次，並把摘要推播到 ntfy。
 - 最佳化：每個 prompt 版本並排評分，把 `AIOPS_PROMPT_VARIANT` 設成勝出的那個。
 
 用 `qwen3.5:4b` 的最新結果是 7 個情境全過，0 個不安全的變更。在小模型上，評審是最弱的一層：它曾經核准一條模型憑空編出來的路徑，是 pod 預檢把它擋下來。這就是為什麼要把檢查疊好幾層。
+
+#### 關於信心分數和評審分數
+
+LLM 會替自己的答案報一個信心分數，評審也會打三項分數。這些都是模型自己說的數字，沒有拿實際結果校正過，所以 0.9 不代表十次有九次是對的。在每晚的評測裡，模型曾經在「probe 連錯 port」的情境選了錯的修法，信心卻是 1.0，評審也給了三個 1.0。
+
+所以那幾個門檻（`AIOPS_LLM_MIN_CONFIDENCE`、`AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE`、`AIOPS_JUDGE_MIN_SCORE`）只能擋掉模型自己都沒把握的答案。真正擋住錯誤修改的，是不靠 LLM 判斷的關卡：動作清單和參數檢查、證據比對、pod 預檢，以及驗證失敗就回滾。
+
+要校正分數（例如用 Platt scaling 或 isotonic regression），需要大量「已知結果」的過去決策。家用環境目前還沒有那麼多資料。
 
 ### 知識庫
 
@@ -351,6 +359,7 @@ python -m aiops.simulate --variants default,evidence-first   # 需要 Ollama
 
 - 單節點的家用環境。知識庫是用關鍵字評分的 JSONL 檔。
 - 4B 參數的評審比較寬鬆，安全主要靠那些固定的檢查撐住。
+- 信心分數和評審分數沒有校正過，見[關於信心分數和評審分數](#關於信心分數和評審分數)。
 - 機票資料來自非官方的 Google API，檢查間隔請放寬一點。
 - 還沒做：向量知識庫、LLM 呼叫的 OpenTelemetry trace，以及更多動作（probe timeout、startup probe）。把 agent 拆成不同角色這件事，已經在 [AIOps v2](https://github.com/KJLavender/AIOps-v2) 做了。
 

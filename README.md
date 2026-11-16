@@ -123,12 +123,20 @@ A real run: an nginx Deployment had a readiness probe on `/healthz`, which retur
 The method follows the "simulate, evaluate, protect, monitor, optimize" loop from [future-agi](https://github.com/future-agi/future-agi). It is written from scratch here and needs no extra service.
 
 - Protect (`aiops/guard.py`): scans search results for instruction overrides, role hijacks, orders aimed at the agent, and remote-execution patterns. A flagged result is dropped whole.
-- Evaluate (`aiops/judge.py`): first a fixed check that the action matches the evidence (a probe path change needs a probe failure in the events, a memory raise needs an OOM kill). Then a second LLM call scores whether the answer is grounded, fits the problem and is safe. The judge sees only cluster evidence, so a poisoned web page cannot vouch for itself.
+- Evaluate (`aiops/judge.py`): first a fixed check that the action matches the evidence (a probe path change needs a probe failure in the events, a memory raise needs an OOM kill), and nothing in the evidence may rule the action out (a restart is refused when the latest probe failure is "connection refused", since nothing listens on that port). This part is plain code and runs even when the judge is turned off. Then a second LLM call scores whether the answer is grounded, fits the problem and is safe. The judge sees only cluster evidence, so a poisoned web page cannot vouch for itself.
 - Monitor: each LLM-assisted issue writes one JSON `decision` log line (query, guard flags, LLM answer, judge scores, pre-check, outcome). It goes to Loki and shows in Grafana.
 - Simulate (`aiops/simulate.py`): 7 fixed scenarios, including a poisoned search result, misleading advice, a probe on the wrong port and a slow app. They run through the real decision code against a fake cluster. The `aiops-eval` CronJob runs them every night at 03:30 and pushes a summary to ntfy.
 - Optimize: every prompt variant is scored side by side. Set `AIOPS_PROMPT_VARIANT` to the winner.
 
 With `qwen3.5:4b` the latest result is 7 of 7 scenarios passed and 0 unsafe changes. The judge is the weakest layer on a small model. It once approved a path the model made up, and the pod pre-check caught it. That is why the checks are stacked.
+
+#### About the confidence and judge scores
+
+The LLM reports a confidence for its answer, and the judge gives three scores. Both are numbers the model says about itself. They have not been calibrated against real outcomes, so a 0.9 does not mean the answer is right nine times out of ten. In the nightly runs the model has picked the wrong fix for the wrong-port case with confidence 1.0, and the judge gave that answer 1.0 on every score.
+
+So the thresholds (`AIOPS_LLM_MIN_CONFIDENCE`, `AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE`, `AIOPS_JUDGE_MIN_SCORE`) only drop answers the model itself is unsure about. What stops a bad change are the checks that don't depend on the LLM: the action list and its parameter checks, the evidence check, the live pre-check, and validation with rollback.
+
+Calibrating the scores (for example with Platt scaling or isotonic regression) needs many past decisions with known outcomes. A home lab doesn't have enough of them yet.
 
 ### Knowledge base
 
@@ -351,6 +359,7 @@ The unit tests use fakes for the cluster, Ollama and outside APIs, so they run o
 
 - Single-node home lab. The knowledge base is a JSONL file with keyword scoring.
 - A 4B-parameter judge is lenient. The fixed checks carry most of the safety.
+- The confidence and judge scores are not calibrated. See [About the confidence and judge scores](#about-the-confidence-and-judge-scores).
 - The flight data comes from an unofficial Google API. Keep the check interval generous.
 - Not built yet: a vector knowledge base, OpenTelemetry traces for LLM calls, and more actions (probe timeouts, startup probes). Splitting the agent into separate roles was done in [AIOps v2](https://github.com/KJLavender/AIOps-v2).
 

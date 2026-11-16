@@ -251,6 +251,14 @@ class Pipeline:
             log.info("rejected LLM action for %s: %s", issue.key, exc)
             self.events.emit("action_rejected", f"{name}: {exc}", issue, level="warn", source="llm")
             return
+        if not self.config.judge_enabled:  # the LLM judge is optional; the evidence check isn't
+            problem = self.judge.evidence_problem(
+                issue, name, ctx.events if ctx else "", (ctx.previous_logs or ctx.logs) if ctx else "")
+            if problem:
+                self._trace["judge"] = {"passed": False, "scores": {}, "reason": problem}
+                self.events.emit("judge_rejected", f"{name}: {problem}"[:300], issue, level="warn", source="llm")
+                diagnosis.patch = None
+                return
         if self.config.judge_enabled:
             container = container_from_deployment(dep_obj, issue.container) or {}
             verdict = self.judge.review(

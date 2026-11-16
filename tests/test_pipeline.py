@@ -333,6 +333,21 @@ def test_judge_rejection_keeps_recommendation_only():
     assert "judge_rejected" in stages and "recommended" in stages
 
 
+class _RefusedKube(_NotReadyKube):
+    def pod_events(self, *args):
+        return "3s Warning Unhealthy pod/web Readiness probe failed: dial tcp 10.42.0.9:8080: connect: connection refused"
+
+
+def test_evidence_check_runs_with_llm_judge_off():
+    kube = _RefusedKube()
+    pipeline = _web_pipeline(kube, _ActionLLM("rollout_restart", {}, confidence=1.0))
+    pipeline.config.judge_enabled = False
+    pipeline.handle(_not_ready_issue())
+    assert kube.patches == [] and pipeline.judged == []
+    stages = [e["stage"] for e in pipeline.events.recent()]
+    assert "judge_rejected" in stages
+
+
 def test_guard_drops_injected_search_result_before_llm():
     kube, llm = _NotReadyKube(), _ActionLLM()
     pipeline = _web_pipeline(kube, llm)
