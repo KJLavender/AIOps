@@ -203,7 +203,7 @@ LLM 會替自己的答案報一個信心分數，評審也會打三項分數。�
 git clone https://github.com/KJLavender/AIOps.git
 cd AIOps
 pip install pytest
-pytest -q                               # 121 個測試，不需要網路或叢集
+pytest -q                               # 123 個測試，不需要網路或叢集
 python -m aiops --demo --dashboard      # 對內建的假叢集跑 agent
 # 打開 http://localhost:8080
 ```
@@ -349,7 +349,7 @@ WORKSPACE.md              詳細開發筆記（繁體中文）
 ## 測試
 
 ```bash
-pytest -q                                                    # 121 個測試：agent 和兩個服務
+pytest -q                                                    # 123 個測試：agent 和兩個服務
 python -m aiops.simulate --variants default,evidence-first   # 需要 Ollama
 ```
 

@@ -203,7 +203,7 @@ Every service exposes Prometheus metrics and has a `ServiceMonitor`.
 git clone https://github.com/KJLavender/AIOps.git
 cd AIOps
 pip install pytest
-pytest -q                               # 121 tests, no network or cluster needed
+pytest -q                               # 123 tests, no network or cluster needed
 python -m aiops --demo --dashboard      # agent against a built-in fake cluster
 # open http://localhost:8080
 ```
@@ -349,7 +349,7 @@ WORKSPACE.md              detailed development notes (Traditional Chinese)
 ## Tests
 
 ```bash
-pytest -q                                                    # 121 tests: agent and both services
+pytest -q                                                    # 123 tests: agent and both services
 python -m aiops.simulate --variants default,evidence-first   # needs Ollama
 ```
 
